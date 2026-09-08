@@ -1,0 +1,63 @@
+# golangci-lint configuration for the mcp-forgejo Go MCP server.
+# Docs: https://golangci-lint.run/
+#
+# NOTE: migrated to the golangci-lint v2 schema (version: "2"). The CI job uses
+# golangci/golangci-lint-action@v6 with version: latest, which installs
+# golangci-lint v2.x; v2 rejects the old v1-format config (no version field and
+# a hybrid `formatters` block), so this file was re-authored for v2. In v2,
+# issue exclusions live under `linters.exclusions.rules` (not `issues.exclude-rules`).
+#
+# Run locally:  golangci-lint run ./...
+# Run in CI:    see .github/workflows/ci.yml (lint job)
+
+version: "2"
+
+run:
+  timeout: 5m
+  tests: true
+
+linters:
+  default: none
+  enable:
+    - errcheck          # unchecked errors are a bug
+    - govet             # go vet
+    - staticcheck       # SA* checks (the big one)
+    - revive            # general purpose linter / style
+    - unconvert         # remove unnecessary type conversions
+    - whitespace        # leading/trailing whitespace detection
+    - gocritic          # highly opinionated code diagnostics
+    - gosec             # security checks (findings must be FIXED, not suppressed)
+    - misspell          # spelling in comments/strings
+  settings:
+    govet:
+      enable:
+        - printf
+        - shadow
+    revive:
+      rules:
+        - name: exported
+          severity: warning
+        - name: package-comments
+          severity: warning
+    gocritic:
+      enabled-tags:
+        - diagnostic
+        - style
+  exclusions:
+    rules:
+      # Test files: relax strictness where it adds noise, but keep security on.
+      - path: _test\.go$
+        linters:
+          - errcheck
+          - gosec
+          - gocritic
+      # Generated code is not hand-authored.
+      - path: (^|/)(mocks?|generated)/|\.pb\.go$
+        linters:
+          - revive
+          - staticcheck
+
+formatters:
+  enable:
+    - gofmt
+    - gofumpt

@@ -1,0 +1,92 @@
+# go-arch-lint dependency rules for the mcp-forgejo Go MCP server.
+# Docs: https://github.com/fe3dback/go-arch-lint
+#
+# The intended dependency architecture (Clean / DDD layers):
+#
+#   cmd/mcp-forgejo          composition root — wires config, logging, the
+#                            Forgejo client, the tool registry and the chosen
+#                            transport driver. May import every internal package.
+#   internal/domain          pure entities (Repo, File, Issue, PullRequest,
+#                            Release, Organization, Comment, Branch). No deps.
+#   internal/application     use cases / tool handlers. Depends only on domain
+#                            interfaces.
+#   internal/infrastructure  the Forgejo REST client + HTTP transport. Depends
+#                            only on domain interfaces.
+#   internal/server          MCP tool registry + transport wiring (stdio driver,
+#                            http/sse driver). Depends on domain/application/
+#                            infrastructure.
+#   internal/config          envconfig-driven configuration. No internal deps.
+#   internal/logging         logrus setup, channel per transport. No internal
+#                            deps.
+#
+# Layer rule: application and infrastructure never import each other; they
+# communicate through interfaces defined in domain. server is the only layer
+# that knows both application and infrastructure.
+#
+# Run locally:  go-arch-lint check
+# Run in CI:    see .github/workflows/ci.yml (arch job)
+
+version: 3
+workdir: .
+
+components:
+  cmd:
+    in: ./cmd/...
+  domain:
+    in: ./internal/domain/...
+  application:
+    in: ./internal/application/...
+  infrastructure:
+    in: ./internal/infrastructure/...
+  server:
+    in: ./internal/server/...
+  config:
+    in: ./internal/config/...
+  logging:
+    in: ./internal/logging/...
+
+# Allowed dependency edges between components. Every other edge is forbidden.
+allow:
+  # 1. cmd is the composition root; it may import the internal packages.
+  - from: cmd
+    to:
+      - domain
+      - application
+      - infrastructure
+      - server
+      - config
+      - logging
+
+  # 2. domain is the pure core; nothing may import INTO it except the layers
+  #    that depend on its interfaces (application/infrastructure/server).
+  - from: domain
+    to: []
+
+  # 3. application implements use cases over domain interfaces only.
+  - from: application
+    to:
+      - domain
+
+  # 4. infrastructure implements the Forgejo REST client over domain interfaces.
+  - from: infrastructure
+    to:
+      - domain
+
+  # 5. server wires tools + transports; it may reach domain, application and
+  #    infrastructure (it is the adapter that binds them together).
+  - from: server
+    to:
+      - domain
+      - application
+      - infrastructure
+
+  # 6. config and logging are leaf utilities with no internal dependencies.
+  - from: config
+    to: []
+  - from: logging
+    to: []
+
+# Paths excluded from dependency analysis (generated code, vendored deps).
+exclude:
+  - ./vendor
+  - ./generated

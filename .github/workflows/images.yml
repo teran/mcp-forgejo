@@ -1,0 +1,78 @@
+# GitHub Actions: build & publish the container image for the HYBRID
+# (stdio + HTTP/SSE) mcp-forgejo server. Because it supports HTTP/SSE, an image
+# is REQUIRED (R1).
+#
+# Image tags (see SKILL.md R3/R4):
+#   On every git tag X  ->  X, X-{timestamp}, X-{commit}, X-{commit}-{timestamp}
+#   On every master commit -> master-{commit}, master-{timestamp}, master-{commit}-{timestamp}
+#
+# Default branch MUST be `master` (R2). Replace the placeholders with the real
+# registry + image name and wire a registry token to the login step.
+# For the internal Forgejo host the image is: git.homelab.teran.dev/teran/mcp-forgejo
+
+name: images
+
+on:
+  push:
+    branches: [master]
+    tags:
+      - "v*"
+  workflow_dispatch:
+
+env:
+  # Placeholder — set to the real registry/image, e.g.:
+  #   git.homelab.teran.dev/teran/mcp-forgejo   (internal Forgejo registry)
+  #   ghcr.io/<owner>/mcp-forgejo              (GitHub Container Registry)
+  IMAGE: <registry>/<owner>/mcp-forgejo
+
+jobs:
+  build-and-publish:
+    name: Build & publish image
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Compute image tags
+        id: meta
+        shell: bash
+        run: |
+          TIMESTAMP=$(date -u +%Y%m%d%H%M%S)
+          COMMIT=${GITHUB_SHA::7}
+          TAGS=()
+          if [[ "$GITHUB_REF_TYPE" == "tag" ]]; then
+            TAG=${GITHUB_REF_NAME}
+            TAGS+=("${{ env.IMAGE }}:${TAG}")
+            TAGS+=("${{ env.IMAGE }}:${TAG}-${TIMESTAMP}")
+            TAGS+=("${{ env.IMAGE }}:${TAG}-${COMMIT}")
+            TAGS+=("${{ env.IMAGE }}:${TAG}-${COMMIT}-${TIMESTAMP}")
+          else
+            TAGS+=("${{ env.IMAGE }}:master-${COMMIT}")
+            TAGS+=("${{ env.IMAGE }}:master-${TIMESTAMP}")
+            TAGS+=("${{ env.IMAGE }}:master-${COMMIT}-${TIMESTAMP}")
+          fi
+          # join with comma
+          IFS=, ; echo "tags=${TAGS[*]}" >> "$GITHUB_OUTPUT"
+
+      - name: Log in to registry
+        uses: docker/login-action@v3
+        with:
+          registry: <registry>          # e.g. ghcr.io or git.homelab.teran.dev
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and push
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          platforms: linux/amd64,linux/arm64
+          cache-from: type=gha
+          cache-to: type=gha,mode=max

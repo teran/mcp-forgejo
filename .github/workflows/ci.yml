@@ -1,0 +1,149 @@
+# GitHub Actions CI for the mcp-forgejo Go MCP server.
+# This is intentionally strict: coverage < 95% FAILS the build, and every
+# gosec / govulncheck finding must be FIXED (never suppressed). gremlins
+# mutation testing is a HARD GATE (survivors fail the build).
+#
+# Default branch is `master` (R2).
+
+name: CI
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+
+env:
+  GO_VERSION: "1.27"
+
+jobs:
+  # ---- Lint: golangci-lint + go vet ----
+  lint:
+    name: Lint (golangci-lint + go vet)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: ${{ env.GO_VERSION }}
+          cache: true
+
+      - name: golangci-lint
+        uses: golangci/golangci-lint-action@v6
+        with:
+          version: latest
+          args: run ./...
+
+      - name: go vet
+        run: go vet ./...
+
+  # ---- Unit tests: -race across OSes + hard coverage gate ----
+  test:
+    name: Tests (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: ${{ env.GO_VERSION }}
+          cache: true
+
+      - name: Test with race detector + coverage
+        run: go test -race -coverprofile=cover.out -covermode=atomic ./...
+
+      - name: Enforce coverage >= 95%
+        shell: bash
+        run: |
+          total=$(go tool cover -func=cover.out | awk '/^total:/ {gsub("%","",$3); print $3}')
+          echo "total coverage: ${total}%"
+          if (( $(echo "${total} < 95" | bc -l) )); then
+            echo "::error::Coverage ${total}% is BELOW the 95% threshold — build failed."
+            exit 1
+          fi
+          echo "::notice::Coverage ${total}% meets the >= 95% threshold."
+
+  # ---- Static security scan (findings MUST be fixed) ----
+  gosec:
+    name: gosec (security scan)
+    runs-on: ubuntu-latest
+    env:
+      GO111MODULE: on
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: ${{ env.GO_VERSION }}
+
+      - name: Run gosec
+        uses: securego/gosec@master
+        with:
+          args: ./...
+
+  # ---- Vulnerability check (findings MUST be fixed) ----
+  govulncheck:
+    name: govulncheck (vulns)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: ${{ env.GO_VERSION }}
+
+      - name: Install govulncheck
+        run: go install golang.org/x/vuln/cmd/govulncheck@latest
+
+      - name: Run govulncheck
+        run: govulncheck ./...
+
+  # ---- Dependency architecture (go-arch-lint) ----
+  arch:
+    name: go-arch-lint (dependency rules)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: ${{ env.GO_VERSION }}
+
+      - name: Install go-arch-lint
+        run: go install github.com/fe3dback/go-arch-lint@latest
+
+      - name: Check architecture
+        run: go-arch-lint check
+
+  # ---- Mutation testing (gremlins) — HARD GATE, fails the build ----
+  gremlins:
+    name: gremlins (mutation testing)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: ${{ env.GO_VERSION }}
+          cache: true
+
+      - name: Run gremlins (must pass; survivors fail the build)
+        run: |
+          go install github.com/go-gremlins/gremlins/cmd/gremlins@latest
+          # NOTE: gremlins 0.6.x (current @latest) reports "No results to
+          # report" when invoked with ./... (it finds no mutants across the
+          # module), making the gate vacuous. Running on the module root '.'
+          # actually performs mutation testing.
+          #
+          # The efficacy threshold MUST be > 0: gremlins only raises a
+          # fail-on-survivor exit code when the threshold is positive
+          # (internal/report assess(): `if et > 0 && tEfficacy <= et`).
+          # With --threshold-efficacy=0 the gate can never fail, so it would
+          # not be a real hard gate (C7/N15/N19). 90 keeps the gate strict
+          # (current efficacy is 100%) while not tripping on the exact-100
+          # boundary that a 100 threshold would.
+          gremlins unleash . --threshold-efficacy=90 --threshold-mcover=0

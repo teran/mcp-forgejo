@@ -30,3 +30,15 @@ go.work.sum
 # Editor/IDE
 # .idea/
 # .vscode/
+
+# Local build binaries (never commit compiled artifacts)
+/mcp-forgejo
+/bin/
+/dist/
+
+# stdio-transport log file (default /tmp/mcp-forgejo.log)
+/tmp/*.log
+
+# Coverage artifacts (also matched by *.out / coverage.* above; explicit here)
+cover.out
+coverage.html
