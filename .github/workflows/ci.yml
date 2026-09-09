@@ -31,7 +31,11 @@ jobs:
       - name: golangci-lint
         uses: golangci/golangci-lint-action@v6
         with:
-          version: latest
+          # Pin a build that supports Go 1.27. "latest" currently resolves to a
+          # binary compiled with Go 1.24, which refuses to load a module
+          # targeting go 1.27.0 (error: "the Go language version used to build
+          # golangci-lint is lower than the targeted Go version").
+          version: v2.13.2
           args: run ./...
 
       - name: go vet
@@ -54,6 +58,9 @@ jobs:
           cache: true
 
       - name: Test with race detector + coverage
+        # shell: bash keeps argument parsing consistent across the matrix; the
+        # default PowerShell on Windows mangles "-coverprofile=cover.out ./...".
+        shell: bash
         run: go test -race -coverprofile=cover.out -covermode=atomic ./...
 
       - name: Enforce coverage >= 95%
@@ -114,7 +121,10 @@ jobs:
           go-version: ${{ env.GO_VERSION }}
 
       - name: Install go-arch-lint
-        run: go install github.com/fe3dback/go-arch-lint@latest
+        # Pin a known-good version so a future schema change in @latest cannot
+        # silently break the config (v1.19 uses the deps/mayDependOn format in
+        # the committed .go-arch-lint.yml).
+        run: go install github.com/fe3dback/go-arch-lint@v1.19.0
 
       - name: Check architecture
         run: go-arch-lint check

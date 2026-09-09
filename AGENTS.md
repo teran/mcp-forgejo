@@ -96,11 +96,16 @@ FORGEJO_URL=https://git.homelab.teran.dev FORGEJO_TOKEN=<pat> \
   HOST=0.0.0.0 PORT=8080 ./mcp-forgejo --transport=http-sse
 ```
 
-- **Image build:** `docker build -t mcp-forgejo .` (see `Dockerfile` —
-  `golang:1.27` build stage, `distroless` runtime, `EXPOSE 8080`).
-- **CI publish:** `.github/workflows/images.yml` publishes on every git tag
-  (R3 tags) and every `master` commit (R4 tags). The image name/registry are
-  placeholders — wire the real internal registry before first release.
+- **Image build:** the binary is produced by **GoReleaser** (`.goreleaser.yaml`)
+  and the `Dockerfile` (distroless runtime, `EXPOSE 8080`) only copies it in —
+  it does NOT recompile. Build locally:
+  ```bash
+  goreleaser build --snapshot --clean --single-target --output dist/mcp-forgejo
+  docker build -t mcp-forgejo .
+  ```
+- **CI publish:** `.github/workflows/images.yml` runs a GoReleaser build step then
+  builds/publishes the image on every git tag (R3 tags) and every `master`
+  commit (R4 tags) to `ghcr.io/teran/mcp-forgejo`.
 
 ## Pointers
 

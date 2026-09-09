@@ -31,60 +31,81 @@ workdir: .
 
 components:
   cmd:
-    in: ./cmd/...
+    in: cmd/**
   domain:
-    in: ./internal/domain/...
+    in: internal/domain/**
   application:
-    in: ./internal/application/...
+    in: internal/application/**
   infrastructure:
-    in: ./internal/infrastructure/...
+    in: internal/infrastructure/**
   server:
-    in: ./internal/server/...
+    in: internal/server/**
   config:
-    in: ./internal/config/...
+    in: internal/config/**
   logging:
-    in: ./internal/logging/...
+    in: internal/logging/**
 
-# Allowed dependency edges between components. Every other edge is forbidden.
+# Vendor libraries used by specific components (allowed via `canUse` below).
+vendors:
+  mcp-sdk:     { in: github.com/modelcontextprotocol/go-sdk/** }
+  logrus:      { in: [ github.com/sirupsen/logrus, github.com/sirupsen/logrus/** ] }
+  envconfig:   { in: [ github.com/kelseyhightower/envconfig, github.com/kelseyhightower/envconfig/** ] }
+
+# Global rules. depOnAnyVendor = false keeps us honest about external deps.
+# deepScan is left OFF: the server layer intentionally wires dependencies by
+# injection (it passes infrastructure.Client into application use-cases), and
+# deepScan's method-call analysis treats that legitimate DI as a violation.
 allow:
-  # 1. cmd is the composition root; it may import the internal packages.
-  - from: cmd
-    to:
+  depOnAnyVendor: false
+  deepScan: false
+
+# Dependency rules between components. Every other edge is forbidden.
+deps:
+  # 1. cmd is the composition root; it may import the internal packages and the
+  #    MCP SDK + logger.
+  cmd:
+    mayDependOn:
       - domain
       - application
       - infrastructure
       - server
       - config
       - logging
+    canUse:
+      - mcp-sdk
+      - logrus
 
-  # 2. domain is the pure core; nothing may import INTO it except the layers
-  #    that depend on its interfaces (application/infrastructure/server).
-  - from: domain
-    to: []
+  # 2. domain is the pure core: intentionally omitted from deps rules below, so
+  #    it may not depend on any project component.
 
   # 3. application implements use cases over domain interfaces only.
-  - from: application
-    to:
+  application:
+    mayDependOn:
       - domain
 
   # 4. infrastructure implements the Forgejo REST client over domain interfaces.
-  - from: infrastructure
-    to:
+  infrastructure:
+    mayDependOn:
       - domain
 
   # 5. server wires tools + transports; it may reach domain, application and
   #    infrastructure (it is the adapter that binds them together).
-  - from: server
-    to:
+  server:
+    mayDependOn:
       - domain
       - application
       - infrastructure
+    canUse:
+      - mcp-sdk
 
-  # 6. config and logging are leaf utilities with no internal dependencies.
-  - from: config
-    to: []
-  - from: logging
-    to: []
+  # 6. config and logging are leaf utilities (no internal deps) that use their
+  #    own vendor libraries.
+  config:
+    canUse:
+      - envconfig
+  logging:
+    canUse:
+      - logrus
 
 # Paths excluded from dependency analysis (generated code, vendored deps).
 exclude:

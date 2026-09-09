@@ -77,9 +77,11 @@ FORGEJO_URL=https://git.homelab.teran.dev FORGEJO_TOKEN=<pat> \
   HOST=0.0.0.0 PORT=8080 ./mcp-forgejo --transport=http-sse
 ```
 
-Or run the container image (see `Dockerfile`):
+Or run the container image (built by **GoReleaser** — the `Dockerfile` only
+copies the prebuilt binary in, it does not recompile; see `Dockerfile`):
 
 ```bash
+goreleaser build --snapshot --clean --single-target --output dist/mcp-forgejo
 docker build -t mcp-forgejo .
 docker run --rm -p 8080:8080 \
   -e FORGEJO_URL=https://git.homelab.teran.dev \
