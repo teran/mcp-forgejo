@@ -6,9 +6,8 @@
 #   On every git tag X  ->  X, X-{timestamp}, X-{commit}, X-{commit}-{timestamp}
 #   On every master commit -> master-{commit}, master-{timestamp}, master-{commit}-{timestamp}
 #
-# Default branch MUST be `master` (R2). Replace the placeholders with the real
-# registry + image name and wire a registry token to the login step.
-# For the internal Forgejo host the image is: git.homelab.teran.dev/teran/mcp-forgejo
+# Default branch MUST be `master` (R2).
+# Hosted on GitHub.com; the image is published to GitHub Container Registry.
 
 name: images
 
@@ -20,10 +19,7 @@ on:
   workflow_dispatch:
 
 env:
-  # Placeholder — set to the real registry/image, e.g.:
-  #   git.homelab.teran.dev/teran/mcp-forgejo   (internal Forgejo registry)
-  #   ghcr.io/<owner>/mcp-forgejo              (GitHub Container Registry)
-  IMAGE: <registry>/<owner>/mcp-forgejo
+  IMAGE: ghcr.io/teran/mcp-forgejo
 
 jobs:
   build-and-publish:
@@ -63,7 +59,7 @@ jobs:
       - name: Log in to registry
         uses: docker/login-action@v3
         with:
-          registry: <registry>          # e.g. ghcr.io or git.homelab.teran.dev
+          registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 

@@ -146,13 +146,13 @@ All tools target the **closed domain** of the configured Forgejo instance (`open
 - **write/update** tools → `readOnlyHint: false`, `destructiveHint: false`, `openWorldHint: false`; `idempotentHint: true` only where repeating with identical args has no extra effect.
 - **delete** tools → `readOnlyHint: false`, `destructiveHint: true`, `idempotentHint: false`, `openWorldHint: false` (deleting an already-removed resource typically errors, so delete is **not** idempotent).
 
-Representative JSON-Schema-style metadata block (shown for one tool; all tools carry the same five annotations + instructions):
+Representative JSON-Schema-style metadata block (shown for one tool; all tools carry the same five annotations; per-tool model guidance is carried in the tool `description` — the go-sdk v1.7.0 `Tool` has no separate `instructions` field, so model instructions are merged into `description`):
 
 ```json
 {
   "name": "forgejo_file_get",
   "title": "Read file",
-  "description": "Returns the UTF-8 text content of a file at path+ref, plus commit/sha metadata.",
+  "description": "Returns the UTF-8 text content of a file at path+ref, plus commit/sha metadata. Use to read a single file's content from the configured Forgejo repo. Provide the file path and an optional ref (branch/tag/sha); defaults to the default branch. Returns base64-decoded UTF-8 text plus the blob sha and commit metadata. If the blob is not valid UTF-8 (a binary file such as an image or archive), the tool does NOT return corrupted text — it returns a binary flag instead of decoding. Never attempts to read local filesystem paths.",
   "annotations": {
     "title": "Read file",
     "readOnlyHint": true,
@@ -160,7 +160,6 @@ Representative JSON-Schema-style metadata block (shown for one tool; all tools c
     "idempotentHint": true,
     "openWorldHint": false
   },
-  "instructions": "Use to read a single file's content from the configured Forgejo repo. Provide the file path and an optional ref (branch/tag/sha); defaults to the default branch. Returns base64-decoded UTF-8 text plus the blob sha and commit metadata. If the blob is not valid UTF-8 (a binary file such as an image or archive), the tool does NOT return corrupted text — it returns a binary flag instead of decoding. Never attempts to read local filesystem paths.",
   "inputSchema": {
     "type": "object",
     "properties": {
@@ -249,7 +248,7 @@ The Go profile is enforced in CI (`.github/workflows/ci.yml`) and locally:
 | Static security | `gosec ./...` — findings **fixed** | C4/N8 |
 | Vuln audit | `govulncheck ./...` — findings **fixed** | C5/N8 |
 | Architecture | `go-arch-lint check` (`.go-arch-lint.yml` authored) | C6 |
-| **Mutation testing** | `gremlins unleash ./... --threshold-efficacy=0 --threshold-mcover=0` | **C7/N15/N19 — HARD GATE, fails the build** (no `continue-on-error`) |
+| **Mutation testing** | `gremlins unleash . --threshold-efficacy=90 --threshold-mcover=0` | **C7/N15/N19 — HARD GATE, fails the build** (no `continue-on-error`; run from the module root `.`, not `./...`) |
 
 **Container image (Hybrid → R1/N17):** `.github/workflows/images.yml` builds & publishes the image. Tags:
 

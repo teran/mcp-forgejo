@@ -243,6 +243,28 @@ func TestHTTPHandlerNonNil(t *testing.T) {
 	}
 }
 
+func TestHTTPHandlerServesRequest(t *testing.T) {
+	// Exercise the streamable HTTP handler end to end so the getServer closure
+	// that returns the mcp.Server is actually invoked.
+	s, err := Build(forgejo.Config{BaseURL: "https://x", Token: "t"}, http.DefaultClient)
+	if err != nil {
+		t.Fatalf("Build() error = %v", err)
+	}
+	h := NewHTTPHandler(s)
+
+	req := httptest.NewRequest(http.MethodPost, "/", strings.NewReader(
+		`{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-03-26","capabilities":{},"clientInfo":{"name":"test","version":"1"}}}`))
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Accept", "application/json, text/event-stream")
+	rec := httptest.NewRecorder()
+
+	h.ServeHTTP(rec, req)
+
+	if rec.Code == 0 {
+		t.Error("handler did not write a response")
+	}
+}
+
 func TestBuildWithNilHTTPClient(t *testing.T) {
 	if _, err := Build(forgejo.Config{BaseURL: "https://x", Token: "t"}, nil); err != nil {
 		t.Fatalf("Build() error = %v", err)

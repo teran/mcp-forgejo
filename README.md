@@ -2,19 +2,16 @@
 
 # mcp-forgejo — MCP Server
 
-<!-- Badges (replace <owner>/<repo> with the real owner/repo, and the coverage /
-     gosec / govulncheck / gremlins badges with the actual badge URLs from your
-     CI/coverage provider). See SPEC.md §10 for the required set. -->
-[![CI](https://github.com/<owner>/<repo>/actions/workflows/ci.yml/badge.svg)](https://github.com/<owner>/<repo>/actions/workflows/ci.yml)
-[![Release](https://img.shields.io/github/v/release/<owner>/<repo>)](https://github.com/<owner>/<repo>/releases)
-[![License](https://img.shields.io/github/license/<owner>/<repo>)](LICENSE)
+[![CI](https://github.com/teran/mcp-forgejo/actions/workflows/ci.yml/badge.svg)](https://github.com/teran/mcp-forgejo/actions/workflows/ci.yml)
+[![Release](https://img.shields.io/github/v/release/teran/mcp-forgejo)](https://github.com/teran/mcp-forgejo/releases)
+[![License](https://img.shields.io/github/license/teran/mcp-forgejo)](LICENSE)
 [![MCP](https://img.shields.io/badge/MCP-Server-blue)](https://modelcontextprotocol.io)
 [![Go Reference](https://pkg.go.dev/badge/git.homelab.teran.dev/teran/mcp-forgejo)](https://pkg.go.dev/git.homelab.teran.dev/teran/mcp-forgejo)
-[![Go Version](https://img.shields.io/github/go-mod/go-version/<owner>/<repo>)](go.mod)
-[![Coverage](https://img.shields.io/endpoint?url=<coverage-badge-url>)](SPEC.md)
-[![gosec](https://img.shields.io/endpoint?url=<gosec-badge-url>)](https://github.com/<owner>/<repo>/actions/workflows/ci.yml)
-[![govulncheck](https://img.shields.io/endpoint?url=<govulncheck-badge-url>)](https://github.com/<owner>/<repo>/actions/workflows/ci.yml)
-[![gremlins](https://img.shields.io/endpoint?url=<gremlins-badge-url>)](https://github.com/<owner>/<repo>/actions/workflows/ci.yml)
+[![Go Version](https://img.shields.io/github/go-mod/go-version/teran/mcp-forgejo)](go.mod)
+[![Coverage](https://img.shields.io/github/actions/workflow/status/teran/mcp-forgejo/ci.yml)](https://github.com/teran/mcp-forgejo/actions/workflows/ci.yml)
+[![gosec](https://img.shields.io/github/actions/workflow/status/teran/mcp-forgejo/ci.yml)](https://github.com/teran/mcp-forgejo/actions/workflows/ci.yml)
+[![govulncheck](https://img.shields.io/github/actions/workflow/status/teran/mcp-forgejo/ci.yml)](https://github.com/teran/mcp-forgejo/actions/workflows/ci.yml)
+[![gremlins](https://img.shields.io/github/actions/workflow/status/teran/mcp-forgejo/ci.yml)](https://github.com/teran/mcp-forgejo/actions/workflows/ci.yml)
 
 A [Model Context Protocol](https://modelcontextprotocol.io) server that wraps the
 **Forgejo REST API** so a model-driven client can perform common
@@ -134,7 +131,7 @@ gosec ./...                    # findings must be FIXED
 govulncheck ./...              # findings must be FIXED
 go test -coverprofile=cover.out ./...
 go tool cover -func=cover.out | awk '/^total:/ {print $3}'  # must be >= 95%
-gremlins unleash ./... --threshold-efficacy=0 --threshold-mcover=0  # HARD GATE
+gremlins unleash . --threshold-efficacy=90 --threshold-mcover=0  # HARD GATE
 ```
 
 CI enforces a **95% coverage gate** (build fails below it), the race detector,

@@ -106,3 +106,17 @@ func TestRunUnknownTransport(t *testing.T) {
 		t.Fatal("expected non-zero exit for unknown transport")
 	}
 }
+
+func TestRunStdioClosesLogFile(t *testing.T) {
+	// With a valid LOG_LEVEL and the stdio transport, logging.Setup opens a log
+	// file and returns a non-nil closer, exercising the deferred Close path.
+	setBaseEnv(t)
+	t.Setenv("LOG_LEVEL", "info")
+	origRun := runStdio
+	runStdio = func(context.Context, *mcp.Server) error { return nil }
+	defer func() { runStdio = origRun }()
+
+	if code := run([]string{"--transport", "stdio"}); code != 0 {
+		t.Fatalf("expected exit 0, got %d", code)
+	}
+}

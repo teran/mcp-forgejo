@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/base64"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -399,5 +400,75 @@ func TestJSONRoundTrip(t *testing.T) {
 	_ = json.Unmarshal([]byte(`{"id":1}`), &body)
 	if body.ID != 1 {
 		t.Errorf("round trip failed: %+v", body)
+	}
+}
+
+func TestGetFileWithRef(t *testing.T) {
+	var gotQuery string
+	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotQuery = r.URL.RawQuery
+		_, _ = w.Write([]byte(`{"name":"f","encoding":"none","content":"x"}`))
+	})
+	c, _ := newTestServer(t, handler)
+	f, err := c.GetFile(context.Background(), "acme", "demo", "main.go", "main")
+	if err != nil {
+		t.Fatalf("GetFile() error = %v", err)
+	}
+	if gotQuery != "ref=main" {
+		t.Errorf("query = %q, want ref=main", gotQuery)
+	}
+	if f.Content != "x" {
+		t.Errorf("content = %q", f.Content)
+	}
+}
+
+func TestDoBuildRequestError(t *testing.T) {
+	// An invalid HTTP method makes http.NewRequestWithContext fail, which must
+	// surface as a transient ForgejoError.
+	c := New(Config{BaseURL: "https://git.example.dev", Token: testToken}, &http.Client{})
+	err := c.do(context.Background(), "bad method", "/api/v1/x", nil, nil)
+	if err == nil {
+		t.Fatal("expected error for invalid HTTP method")
+	}
+	fe, ok := err.(*domain.ForgejoError)
+	if !ok {
+		t.Fatalf("expected *domain.ForgejoError, got %T", err)
+	}
+	if fe.Kind != domain.KindTransient {
+		t.Errorf("Kind = %q, want transient", fe.Kind)
+	}
+}
+
+// errReadCloser is a response body whose Read always fails.
+type errReadCloser struct{}
+
+func (errReadCloser) Read([]byte) (int, error) { return 0, errors.New("read boom") }
+func (errReadCloser) Close() error             { return nil }
+
+// errTransport returns a 200 response whose body fails on read.
+type errTransport struct{}
+
+func (errTransport) RoundTrip(*http.Request) (*http.Response, error) {
+	return &http.Response{
+		StatusCode: http.StatusOK,
+		Status:     "200 OK",
+		Header:     http.Header{},
+		Body:       errReadCloser{},
+	}, nil
+}
+
+func TestDoResponseBodyReadError(t *testing.T) {
+	// A response body that errors on read must surface as a transient error.
+	c := New(Config{BaseURL: "https://git.example.dev", Token: testToken}, &http.Client{Transport: errTransport{}})
+	err := c.do(context.Background(), http.MethodGet, "/api/v1/repos/a/b", nil, &domain.Repository{})
+	if err == nil {
+		t.Fatal("expected error for failing response body read")
+	}
+	fe, ok := err.(*domain.ForgejoError)
+	if !ok {
+		t.Fatalf("expected *domain.ForgejoError, got %T", err)
+	}
+	if fe.Kind != domain.KindTransient {
+		t.Errorf("Kind = %q, want transient", fe.Kind)
 	}
 }
