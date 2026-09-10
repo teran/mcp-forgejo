@@ -46,13 +46,16 @@ jobs:
       - name: go vet
         run: go vet ./...
 
-  # ---- Unit tests: -race across OSes + hard coverage gate ----
+  # ---- Unit tests: -race + hard coverage gate ----
   test:
     name: Tests (${{ matrix.os }})
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-latest, windows-latest, macos-latest]
+        # Single OS: the runtime artifact is Linux-only (HTTP/SSE image) and
+        # the stdio file-perms check is guarded to Unix in logging_test.go, so
+        # there is no OS-specific code path to exercise on Windows/macOS.
+        os: [ubuntu-latest]
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
