@@ -1,0 +1,51 @@
+# GitHub Actions: build & publish the BINARY release artifacts (B1/B2).
+#
+# Triggered on every git tag `v*`. Runs GoReleaser which produces the binary
+# artifact (with ldflags-embedded appName/appVersion/appCommitHash/appTimestamp
+# — B2) and publishes it as a GitHub Release.
+#
+# The binary produced here is the single, verified build source. The container
+# image is built separately by images.yml and NEVER recompiles the binary (B4):
+# the Dockerfile only copies a GoReleaser-built binary into the image.
+#
+# Default branch MUST be `master` (R2). Requires contents:write to create the
+# GitHub Release and upload binary artifacts.
+
+name: release
+
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+
+permissions:
+  contents: write   # create the GitHub Release + upload binary artifacts
+  packages: write   # publish to the container registry if wired
+
+jobs:
+  goreleaser:
+    name: Build & publish binaries (goreleaser)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0   # needed for goreleaser (full history / tags)
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.27"   # keep in sync with go.mod (1.27.0) and ci.yml
+          cache: true
+
+      - name: Run GoReleaser
+        uses: goreleaser/goreleaser-action@v6
+        with:
+          distribution: goreleaser
+          version: latest
+          args: release --clean
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      # The produced binary artifact (under dist/) is the single source for the
+      # container image built by images.yml (B4). A separate binary is never
+      # built for the image.

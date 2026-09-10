@@ -6,12 +6,14 @@
 [![Release](https://img.shields.io/github/v/release/teran/mcp-forgejo)](https://github.com/teran/mcp-forgejo/releases)
 [![License](https://img.shields.io/github/license/teran/mcp-forgejo)](LICENSE)
 [![MCP](https://img.shields.io/badge/MCP-Server-blue)](https://modelcontextprotocol.io)
-[![Go Reference](https://pkg.go.dev/badge/git.homelab.teran.dev/teran/mcp-forgejo)](https://pkg.go.dev/git.homelab.teran.dev/teran/mcp-forgejo)
 [![Go Version](https://img.shields.io/github/go-mod/go-version/teran/mcp-forgejo)](go.mod)
-[![Coverage](https://img.shields.io/github/actions/workflow/status/teran/mcp-forgejo/ci.yml)](https://github.com/teran/mcp-forgejo/actions/workflows/ci.yml)
-[![gosec](https://img.shields.io/github/actions/workflow/status/teran/mcp-forgejo/ci.yml)](https://github.com/teran/mcp-forgejo/actions/workflows/ci.yml)
-[![govulncheck](https://img.shields.io/github/actions/workflow/status/teran/mcp-forgejo/ci.yml)](https://github.com/teran/mcp-forgejo/actions/workflows/ci.yml)
-[![gremlins](https://img.shields.io/github/actions/workflow/status/teran/mcp-forgejo/ci.yml)](https://github.com/teran/mcp-forgejo/actions/workflows/ci.yml)
+
+> **Badge note:** a `pkg.go.dev` / "Go Reference" badge is **intentionally
+> omitted**. The module path `git.homelab.teran.dev/...` is **local-only** (see
+> `SPEC.md` §5 S6) and is not published to pkg.go.dev, so such a badge would
+> never resolve and would leak the internal module location. The CI badge above
+> covers lint, tests, coverage, gosec, govulncheck, go-arch-lint and gremlins
+> (see `.github/workflows/ci.yml`).
 
 A [Model Context Protocol](https://modelcontextprotocol.io) server that wraps the
 **Forgejo REST API** so a model-driven client can perform common
@@ -105,6 +107,20 @@ Configuration is loaded with
 [`kelseyhightower/envconfig`](https://github.com/kelseyhightower/envconfig).
 There is **no `ALLOW_DIRS`**: the server never touches the local filesystem —
 all operations go to the remote Forgejo API (see `SPEC.md` §3).
+
+### Startup banner
+
+When logging is enabled (i.e. `LOG_LEVEL` is set), the server writes a
+**startup banner** as the first log line on the transport's logging channel
+(file for stdio, stdout for HTTP/SSE):
+
+```text
+Starting mcp-forgejo/1.2.3 (commit: abc1234; built at 2026-09-10T12:00:00Z)
+```
+
+The banner is populated at **build time** via ldflags
+(`appName`/`appVersion`/`appCommitHash`/`appTimestamp`, see `.goreleaser.yaml`
+and `SPEC.md` §8 B2/B5).
 
 ## Transports & Auth
 

@@ -22,6 +22,21 @@ import (
 	"git.homelab.teran.dev/teran/mcp-forgejo/internal/server"
 )
 
+// Build metadata, stamped at link time via ldflags (B2). Under `go test` and
+// plain `go build` these defaults hold; goreleaser overrides them (see
+// .goreleaser.yaml and SPEC.md §8).
+var (
+	appName       = "mcp-forgejo"
+	appVersion    = "dev"
+	appCommitHash = "none"
+	appTimestamp  = "unknown"
+)
+
+// startupBanner returns the B5 startup banner describing the build (B2).
+func startupBanner() string {
+	return fmt.Sprintf("Starting %s/%s (commit: %s; built at %s)", appName, appVersion, appCommitHash, appTimestamp)
+}
+
 // These variables are the seams that let tests replace the real server build
 // and transport runners without spawning blocking servers.
 var (
@@ -73,6 +88,13 @@ func run(args []string) int {
 	}
 	if closer != nil {
 		defer func() { _ = closer.Close() }()
+	}
+
+	// B5/L6: when logging is enabled (LOG_LEVEL set), emit the startup banner as
+	// the very first line, before the transport startup line. If LOG_LEVEL is
+	// empty the logger writes to io.Discard, so nothing is emitted.
+	if cfg.LogLevel != "" {
+		logger.Info(startupBanner())
 	}
 
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)

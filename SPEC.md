@@ -223,7 +223,7 @@ Representative JSON-Schema-style metadata block (shown for one tool; all tools c
 
 ---
 
-## 7. Logging (L1–L5, G8)
+## 7. Logging (L1–L6, B5, G8)
 
 Uses **`logrus`** (`github.com/sirupsen/logrus`).
 
@@ -232,10 +232,14 @@ Uses **`logrus`** (`github.com/sirupsen/logrus`).
 - **L3 — override path:** `LOG_FILENAME` (default `/tmp/mcp-forgejo.log`).
 - **L4 — format:** default `text` (logrus text, **full absolute timestamp**); `LOG_FORMAT=json` → JSON.
 - **L5 / S2 / N2 — no secrets:** `FORGEJO_TOKEN` and any credentials/passwords are **never** logged; redaction helpers strip them from any log line or error before emission.
+- **L6 / B5 — startup banner:** when logging is enabled (i.e. `LOG_LEVEL` is set, L2), the **startup banner** is emitted as the **first line** of the logging channel for the selected transport — the **file** for stdio, **stdout** for HTTP/SSE (consistent with L1). The banner advertises the running build and is written exactly once, at startup, before any other log line.
+- **B5 — banner format:** the banner text is
+  `Starting {appName}/{appVersion} (commit: {appCommitHash}; built at {appTimestamp})`.
+  The fields are the build metadata embedded at link time via ldflags (B2). The banner contains **no secrets** (S2).
 
 ---
 
-## 8. CI & tooling (C1–C8, G1, R1–R4)
+## 8. CI & tooling (C1–C8, G1, R1–R4, B1–B5)
 
 The Go profile is enforced in CI (`.github/workflows/ci.yml`) and locally:
 
@@ -256,6 +260,15 @@ The Go profile is enforced in CI (`.github/workflows/ci.yml`) and locally:
 - On **commit to `master`** (R4): `master-{commit}`, `master-{ts}`, `master-{commit}-{ts}`.
 
 **Default branch (R2/N16):** `master` (never `main`).
+
+**Binary release (B1/B2):** `.github/workflows/release.yml` runs `goreleaser release --clean` on every git **tag `v*`** (requires `contents: write`), publishing the **binary artifact** to a GitHub Release. GoReleaser embeds **build metadata via ldflags** (B2) with the variable names `appName`, `appVersion`, `appCommitHash`, `appTimestamp` (`main.*` package vars):
+
+- `appName` ← `{{ .ProjectName }}`
+- `appVersion` ← `{{ .Version }}`
+- `appCommitHash` ← `{{ .ShortCommit }}`
+- `appTimestamp` ← `{{ .Date }}`
+
+**Single-build-source (B4):** the binary published by `release.yml` (and built by `images.yml`) is the **only** build of the server. The `Dockerfile` does **NOT** recompile — it only copies a GoReleaser-produced binary (`dist/mcp-forgejo`) into the image. The startup banner (B5/L6) reads this embedded metadata.
 
 ---
 
@@ -281,7 +294,8 @@ The following MUST / MUST NOT are satisfied by this SPEC and scaffold:
 - **S1** TLS never in-server; **S2** no secret leakage + redaction; **S3** tools grouped read→write→delete; **S4** no local FS → `ALLOW_DIRS` omitted & explained; **S5** fix-don't-suppress; **S6** local-only module name (§5).
 - **A1** DDD/Clean architecture with layout, tool registry, transport wiring, config, error handling (§4).
 - **D1** README English; **D2** SPEC/AGENTS strictly English; **D3** README begins with the AI-Generated Content disclaimer; **D4** full badge set.
-- **L1–L5** logging channel per transport, `LOG_LEVEL`-gated, `LOG_FILENAME`/`LOG_FORMAT` (§7).
+- **L1–L5** logging channel per transport, `LOG_LEVEL`-gated, `LOG_FILENAME`/`LOG_FORMAT` (§7); **L6** startup banner first line per transport.
+- **B1** binary release on `v*` tags via GoReleaser; **B2** ldflags-embedded build metadata (`appName`/`appVersion`/`appCommitHash`/`appTimestamp`); **B4** image reuses the binary, never recompiles; **B5** banner format (§7, §8).
 - **R1** image build/publish for Hybrid; **R2** default branch `master`; **R3**/**R4** image tags (§8).
 - **G1** Go 1.27 pinned; **G2** Go stated; **G8** logrus.
 - **N1, N2, N3 (vacuous), N4, N5, N6, N7, N8, N9, N10, N11, N12, N13, N14, N15, N16, N17, N18, N19, N20** — all avoided/not violated.

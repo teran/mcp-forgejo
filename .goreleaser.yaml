@@ -8,6 +8,11 @@
 #   version:     from git tag (R3) or master commit (R4)
 #   main:        ./cmd/mcp-forgejo
 #   ldflags:     -s -w (strip) + version stamping via goreleaser's built-ins
+#
+# NOTE (B2/B4): the container image does NOT recompile the binary — the
+# Dockerfile only copies a GoReleaser-built binary into the image (see
+# .github/workflows/images.yml). The ldflags stamp the main.* build-metadata
+# vars (appName/appVersion/appCommitHash/appTimestamp) per SPEC.md §8.
 
 version: 2
 
@@ -30,17 +35,17 @@ builds:
       - amd64
       - arm64
     ldflags:
-      - -s -w -X main.version={{.Version}} -X main.commit={{.Commit}} -X main.date={{.Date}}
+      - -s -w -X main.appName={{.ProjectName}} -X main.appVersion={{.Version}} -X main.appCommitHash={{.ShortCommit}} -X main.appTimestamp={{.Date}}
 
 archives:
-  - format: tar.gz
+  - formats: [tar.gz]
     name_template: "{{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
 
 checksum:
   name_template: "checksums.txt"
 
 snapshot:
-  name_template: "{{ incpatch .Version }}-snapshot"
+  version_template: "{{ incpatch .Version }}-snapshot"
 
 release:
   # Publish a GitHub release when a tag is pushed; the images workflow
