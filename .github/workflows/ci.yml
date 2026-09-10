@@ -37,7 +37,11 @@ jobs:
           # targeting go 1.27.0 (error: "the Go language version used to build
           # golangci-lint is lower than the targeted Go version").
           version: v2.13.2
-          args: run ./...
+          # NOTE: golangci-lint-action already invokes `golangci-lint run`, so
+          # args must contain only the paths/flags (NOT `run`). Passing `run
+          # ./...` produced `golangci-lint run run ./...` and failed with
+          # "stat .../run: directory not found".
+          args: ./...
 
       - name: go vet
         run: go vet ./...
