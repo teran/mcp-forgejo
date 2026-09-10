@@ -3,6 +3,7 @@ package logging
 import (
 	"os"
 	"path/filepath"
+	"runtime"
 	"testing"
 
 	"github.com/sirupsen/logrus"
@@ -47,8 +48,12 @@ func TestSetupStdioWritesToFileWithPerms(t *testing.T) {
 	if err != nil {
 		t.Fatalf("stat log file: %v", err)
 	}
-	if perm := info.Mode().Perm(); perm != 0o600 {
-		t.Errorf("log file perms = %o, want 600", perm)
+	// Windows does not implement POSIX permission bits (os.OpenFile mode is
+	// ignored), so the 0600 assertion is only meaningful on Unix.
+	if runtime.GOOS != "windows" {
+		if perm := info.Mode().Perm(); perm != 0o600 {
+			t.Errorf("log file perms = %o, want 600", perm)
+		}
 	}
 
 	logger.Info("hello from test")

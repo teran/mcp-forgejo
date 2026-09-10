@@ -29,7 +29,8 @@ jobs:
           cache: true
 
       - name: golangci-lint
-        uses: golangci/golangci-lint-action@v6
+        # v7 is required for golangci-lint v2.x (v6 rejects v2 version strings).
+        uses: golangci/golangci-lint-action@v7
         with:
           # Pin a build that supports Go 1.27. "latest" currently resolves to a
           # binary compiled with Go 1.24, which refuses to load a module

@@ -65,9 +65,11 @@ jobs:
         # The binary is built by GoReleaser (NOT in the Dockerfile); the
         # Dockerfile only copies it in. --single-target builds for the runner
         # (linux/amd64); --output writes dist/mcp-forgejo for a stable COPY.
-        run: |
-          goreleaser build --snapshot --clean --single-target \
-            --output dist/mcp-forgejo
+        uses: goreleaser/goreleaser-action@v6
+        with:
+          distribution: goreleaser
+          version: latest
+          args: build --snapshot --clean --single-target --output dist/mcp-forgejo
 
       - name: Log in to registry
         uses: docker/login-action@v3
