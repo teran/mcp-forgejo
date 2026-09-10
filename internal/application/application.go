@@ -6,7 +6,7 @@ package application
 import (
 	"context"
 
-	"git.homelab.teran.dev/teran/mcp-forgejo/internal/domain"
+	"example.com/teran/mcp-forgejo/internal/domain"
 )
 
 // GetRepository returns a single repository by owner+name.

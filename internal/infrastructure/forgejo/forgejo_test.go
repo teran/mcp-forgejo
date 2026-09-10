@@ -10,7 +10,7 @@ import (
 	"strings"
 	"testing"
 
-	"git.homelab.teran.dev/teran/mcp-forgejo/internal/domain"
+	"example.com/teran/mcp-forgejo/internal/domain"
 )
 
 const testToken = "super-secret-pat"

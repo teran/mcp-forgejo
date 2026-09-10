@@ -16,7 +16,7 @@ import (
 	"strings"
 	"unicode/utf8"
 
-	"git.homelab.teran.dev/teran/mcp-forgejo/internal/domain"
+	"example.com/teran/mcp-forgejo/internal/domain"
 )
 
 // Config carries the values the client needs to talk to Forgejo. It is a

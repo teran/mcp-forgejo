@@ -16,10 +16,10 @@ import (
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 	"github.com/sirupsen/logrus"
 
-	"git.homelab.teran.dev/teran/mcp-forgejo/internal/config"
-	"git.homelab.teran.dev/teran/mcp-forgejo/internal/infrastructure/forgejo"
-	"git.homelab.teran.dev/teran/mcp-forgejo/internal/logging"
-	"git.homelab.teran.dev/teran/mcp-forgejo/internal/server"
+	"example.com/teran/mcp-forgejo/internal/config"
+	"example.com/teran/mcp-forgejo/internal/infrastructure/forgejo"
+	"example.com/teran/mcp-forgejo/internal/logging"
+	"example.com/teran/mcp-forgejo/internal/server"
 )
 
 // Build metadata, stamped at link time via ldflags (B2). Under `go test` and

@@ -1,4 +1,4 @@
-module git.homelab.teran.dev/teran/mcp-forgejo
+module example.com/teran/mcp-forgejo
 
 go 1.27.0
 

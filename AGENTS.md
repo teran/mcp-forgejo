@@ -21,8 +21,9 @@ instance over HTTP; it **never touches the local filesystem** (so there is **no
 ## Hard facts you must not change
 
 - **Language:** Go **1.27.0** (`go.mod` `go 1.27.0`; `GO_VERSION: "1.27"` in CI).
-- **Module path:** `git.homelab.teran.dev/teran/mcp-forgejo` — **local-only**,
-  never a public/external domain (S6/N20). Do not rewrite it to `github.com/...`.
+- **Module path:** `example.com/teran/mcp-forgejo` — a **placeholder** for the
+  internal-only path (S6/N20). The real upstream location is kept private; do
+  not rewrite it to a real public/external domain such as `github.com/...`.
 - **SDK:** `github.com/modelcontextprotocol/go-sdk` (official; never hand-roll).
 - **Logger:** `logrus` only. Channel per transport (L1): HTTP/SSE → stdout;
   stdio → file (`/tmp/mcp-forgejo.log`, chmod 600), **never** stdout.
@@ -89,10 +90,10 @@ supports HTTP/SSE — R1).
 go build -o mcp-forgejo ./cmd/mcp-forgejo
 
 # run locally (stdio)
-FORGEJO_URL=https://git.homelab.teran.dev FORGEJO_TOKEN=<pat> ./mcp-forgejo --transport=stdio
+FORGEJO_URL=https://git.example.com FORGEJO_TOKEN=<pat> ./mcp-forgejo --transport=stdio
 
 # run as a remote sidecar (HTTP/SSE)
-FORGEJO_URL=https://git.homelab.teran.dev FORGEJO_TOKEN=<pat> \
+FORGEJO_URL=https://git.example.com FORGEJO_TOKEN=<pat> \
   HOST=0.0.0.0 PORT=8080 ./mcp-forgejo --transport=http-sse
 ```
 

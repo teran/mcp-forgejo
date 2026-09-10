@@ -9,9 +9,10 @@
 [![Go Version](https://img.shields.io/github/go-mod/go-version/teran/mcp-forgejo)](go.mod)
 
 > **Badge note:** a `pkg.go.dev` / "Go Reference" badge is **intentionally
-> omitted**. The module path `git.homelab.teran.dev/...` is **local-only** (see
-> `SPEC.md` §5 S6) and is not published to pkg.go.dev, so such a badge would
-> never resolve and would leak the internal module location. The CI badge above
+> omitted**. The module path `example.com/...` is a **placeholder** for the
+> internal-only path (see `SPEC.md` §5 S6) and is not published to pkg.go.dev,
+> so such a badge would never resolve and would leak the internal module
+> location. The CI badge above
 > covers lint, tests, coverage, gosec, govulncheck, go-arch-lint and gremlins
 > (see `.github/workflows/ci.yml`).
 
@@ -68,14 +69,14 @@ go build -o mcp-forgejo ./cmd/mcp-forgejo
 ### Run locally (stdio)
 
 ```bash
-FORGEJO_URL=https://git.homelab.teran.dev FORGEJO_TOKEN=<pat> \
+FORGEJO_URL=https://git.example.com FORGEJO_TOKEN=<pat> \
   ./mcp-forgejo --transport=stdio
 ```
 
 ### Run as a remote sidecar (HTTP/SSE)
 
 ```bash
-FORGEJO_URL=https://git.homelab.teran.dev FORGEJO_TOKEN=<pat> \
+FORGEJO_URL=https://git.example.com FORGEJO_TOKEN=<pat> \
   HOST=0.0.0.0 PORT=8080 ./mcp-forgejo --transport=http-sse
 ```
 
@@ -86,7 +87,7 @@ copies the prebuilt binary in, it does not recompile; see `Dockerfile`):
 goreleaser build --snapshot --clean --single-target --output dist/mcp-forgejo
 docker build -t mcp-forgejo .
 docker run --rm -p 8080:8080 \
-  -e FORGEJO_URL=https://git.homelab.teran.dev \
+  -e FORGEJO_URL=https://git.example.com \
   -e FORGEJO_TOKEN=<pat> \
   mcp-forgejo --transport=http-sse
 ```
@@ -95,7 +96,7 @@ docker run --rm -p 8080:8080 \
 
 | Env var          | Type       | Default                  | Description                          |
 |------------------|------------|--------------------------|--------------------------------------|
-| `FORGEJO_URL`    | `string`   | (from env)               | Base URL of the Forgejo instance, e.g. `https://git.homelab.teran.dev`. Required. |
+| `FORGEJO_URL`    | `string`   | (from env)               | Base URL of the Forgejo instance, e.g. `https://git.example.com`. Required. |
 | `FORGEJO_TOKEN`  | `string`   | (empty)                  | Forgejo **personal access token** (PAT). **Secret** — never logged/leaked. Required for authenticated operations. |
 | `HOST`           | `string`   | `0.0.0.0`                | Listen host for the HTTP/SSE transport. |
 | `PORT`           | `string`   | `8080`                   | Listen port for the HTTP/SSE transport. |

@@ -11,8 +11,8 @@ import (
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 
-	"git.homelab.teran.dev/teran/mcp-forgejo/internal/domain"
-	"git.homelab.teran.dev/teran/mcp-forgejo/internal/infrastructure/forgejo"
+	"example.com/teran/mcp-forgejo/internal/domain"
+	"example.com/teran/mcp-forgejo/internal/infrastructure/forgejo"
 )
 
 const testToken = "srv-secret-pat"

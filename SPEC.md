@@ -40,7 +40,7 @@ Configuration is loaded from the environment with [`kelseyhightower/envconfig`](
 
 | Env var          | Type       | Default            | Description |
 |------------------|------------|--------------------|-------------|
-| `FORGEJO_URL`    | `string`   | (from env)         | Base URL of the Forgejo instance, e.g. `https://git.homelab.teran.dev`. Required. |
+| `FORGEJO_URL`    | `string`   | (from env)         | Base URL of the Forgejo instance, e.g. `https://git.example.com`. Required. |
 | `FORGEJO_TOKEN`  | `string`   | (empty)            | Forgejo **personal access token** (PAT). **Secret** — never logged, echoed, or included in tool output (S2/N2). Required for authenticated operations. |
 | `HOST`           | `string`   | `0.0.0.0`          | Listen host for the HTTP/SSE transport. |
 | `PORT`           | `string`   | `8080`             | Listen port for the HTTP/SSE transport. |
@@ -129,7 +129,7 @@ Layers communicate through **domain interfaces**; `application` and `infrastruct
 - **S3 — tool priority order.** Tools are grouped and registered **read → write/update → delete** (see §6).
 - **S4 — no local filesystem access.** The server does not touch the local filesystem; it only talks to the remote Forgejo API over HTTP. Consequently **`ALLOW_DIRS` is not required and is omitted** from config (see §3). There is no local path to scope, so N3 is vacuous by design.
 - **S5 / N8 — fix, don't suppress.** gosec and govulncheck findings are **fixed**, never suppressed via blanket exclusions or default `#nosec`. Findings block the build (C4/C5).
-- **S6 / N20 — local-only module name.** `mcp-forgejo` is hosted on an internal Forgejo. The module/package name is **local-only** — `git.homelab.teran.dev/teran/mcp-forgejo` — and MUST NOT reference a public/external domain such as `github.com/...`. This keeps the real upstream location private as a **security measure**.
+- **S6 / N20 — module name is a placeholder, never a real public/external domain.** `mcp-forgejo` is hosted on an internal Forgejo, so the real upstream location is kept private as a **security measure**. The module/package name uses the **placeholder** `example.com/teran/mcp-forgejo` and MUST NOT be rewritten to a real public/external domain such as `github.com/...`.
 - **S7 — reverse-proxy authn/authz for HTTP/SSE.** The MCP HTTP/SSE layer offers **no authentication of its own**: the server holds the PAT in its environment and uses it to call Forgejo, but any client that can reach `HOST:PORT` can drive every tool with the operator's privileges — including destructive ones (`forgejo_repo_delete`, `forgejo_pull_merge`, …). For any HTTP/SSE deployment the listener **MUST** sit behind a reverse proxy that enforces client authentication/authorization (e.g. mTLS, OIDC, network ACL, or a proxy token) before requests reach the server. Additionally, run the PAT under a **dedicated low-privilege Forgejo user** scoped to only the operations the team actually needs. In **stdio** mode the client is trusted by construction (the local process that spawned the server), so this does not apply.
 
 ---

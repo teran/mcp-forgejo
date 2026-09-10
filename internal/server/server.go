@@ -9,9 +9,9 @@ import (
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 
-	"git.homelab.teran.dev/teran/mcp-forgejo/internal/application"
-	"git.homelab.teran.dev/teran/mcp-forgejo/internal/domain"
-	"git.homelab.teran.dev/teran/mcp-forgejo/internal/infrastructure/forgejo"
+	"example.com/teran/mcp-forgejo/internal/application"
+	"example.com/teran/mcp-forgejo/internal/domain"
+	"example.com/teran/mcp-forgejo/internal/infrastructure/forgejo"
 )
 
 // Implementation metadata advertised during MCP initialization.
