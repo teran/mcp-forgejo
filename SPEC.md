@@ -56,6 +56,15 @@ Configuration is loaded from the environment with [`kelseyhightower/envconfig`](
 
 The application is layered with Clean / DDD principles. The **composition root** wires concrete dependencies; the core depends on interfaces.
 
+> **Layout decision (A1):** this repository **intentionally uses a layered
+> `internal/` package layout** — `cmd/mcp-forgejo` (composition root) plus
+> `internal/{domain,application,infrastructure,server,config,logging}` — **by
+> explicit project choice**. This is a deliberate decision recorded here (in
+> contrast to the skill's default **simple layout**, which is used only when no
+> layered `internal/` layout was requested). It is enforced by `go-arch-lint`
+> (§4.5) and reflected in the package tree below; do not flatten it into a
+> single/`main`-only package without revisiting this decision.
+
 ### 4.1 Package layout
 
 ```
