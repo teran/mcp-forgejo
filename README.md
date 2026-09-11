@@ -33,20 +33,27 @@ branches, releases, and organizations.
 
 ## Features
 
-**Read**
-- Search & inspect repositories (`forgejo_repo_search`, `forgejo_repo_get`).
-- List your organizations (`forgejo_org_list`).
-- Browse repository contents and read files with commit metadata
-  (`forgejo_repo_list_contents`, `forgejo_file_get`).
-- Get diffs, commits, and branches (`forgejo_diff_get`, `forgejo_commit_list`,
-  `forgejo_branch_list`).
-- List/inspect issues including comments (`forgejo_issue_list`,
-  `forgejo_issue_get`).
-- List/inspect pull requests including changed files and checks
-  (`forgejo_pull_list`, `forgejo_pull_get`).
-- List releases (`forgejo_release_list`).
+> **Implementation status.** The tool surface below is the **target design**
+> (roadmap). **Stage 1** currently implements **5 read tools** — marked
+> **`[implemented]`** — while everything else is **planned / target surface** and
+> is not yet registered in the running server. See `SPEC.md` §6 for the full
+> surface with per-tool status.
 
-**Write / Update**
+**Read**
+- `[implemented]` Search & inspect repositories — currently `forgejo_repo_get`
+  (repo search `forgejo_repo_search` is **planned**).
+- `[implemented]` List your organizations (`forgejo_org_list`).
+- `[implemented]` Browse repository contents and read files with commit
+  metadata (`forgejo_repo_list_contents`, `forgejo_file_get`).
+- **Planned:** get diffs, commits, and branches (`forgejo_diff_get`,
+  `forgejo_commit_list`, `forgejo_branch_list`).
+- `[implemented]` Get an issue with its comments (`forgejo_issue_get`); listing
+  issues (`forgejo_issue_list`) is **planned**.
+- **Planned:** list/inspect pull requests including changed files and checks
+  (`forgejo_pull_list`, `forgejo_pull_get`).
+- **Planned:** list releases (`forgejo_release_list`).
+
+**Write / Update** — *planned*
 - Create repositories (`forgejo_repo_create`).
 - Write/update single or multiple files in one commit
   (`forgejo_file_write`, `forgejo_file_write_many`), create branches
@@ -57,7 +64,7 @@ branches, releases, and organizations.
   `forgejo_pull_update`, `forgejo_pull_merge`, `forgejo_pull_review`).
 - Create releases (`forgejo_release_create`).
 
-**Delete**
+**Delete** — *planned*
 - Delete files, branches, issues, comments, releases, and repositories
   (`forgejo_file_delete`, `forgejo_branch_delete`, `forgejo_issue_delete`,
   `forgejo_comment_delete`, `forgejo_release_delete`, `forgejo_repo_delete`).

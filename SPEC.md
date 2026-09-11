@@ -149,6 +149,14 @@ All tools target the **closed domain** of the configured Forgejo instance (`open
 
 **Common request parameters:** `owner`, `repo`, `ref`/`branch`, pagination `page` (1-based) + `limit`. **Common errors:** 401, 403, 404, 422, 409, 423. Content in file operations is base64-encoded over the wire; bodies carry commit metadata (message, branch, `new_branch`, author).
 
+> **Status.** §6 describes the **target tool surface** (the roadmap/design). The
+> actual implementation is delivered in **stages**: **Stage 1** currently
+> implements the **5 read tools** marked `implemented` below
+> (`forgejo_repo_get`, `forgejo_org_list`, `forgejo_repo_list_contents`,
+> `forgejo_file_get`, `forgejo_issue_get`). All other tools in this section are
+> **planned** (target surface) and are **not** yet registered in the running
+> server — do not assume they exist until implemented.
+
 ### 6.0 Metadata conventions
 
 - **read** tools → `readOnlyHint: true`, `destructiveHint: false`, `idempotentHint: true`, `openWorldHint: false`.
@@ -184,49 +192,49 @@ Representative JSON-Schema-style metadata block (shown for one tool; all tools c
 
 ### 6.1 READ — `readOnlyHint: true`, `openWorldHint: false`
 
-| # | Tool | Title | Forgejo operationId(s) | Instructions (abridged) |
-|---|------|-------|------------------------|--------------------------|
-| 1 | `forgejo_repo_search` | Search repositories | `repoSearch` | Search the Forgejo instance by `q`, `topic`, `sort`, `order`, `private`. Returns matching repos (id, full name, visibility, default branch, description). `idempotentHint: true`. |
-| 2 | `forgejo_repo_get` | Get repository | `repoGet`, `repoGetByID` | Return details of one repo by owner+name (or id). Read-only; never modifies. |
-| 3 | `forgejo_org_list` | List my organizations | `orgListCurrentUserOrgs` | List the organizations the current user belongs to. Read-only. |
-| 4 | `forgejo_repo_list_contents` | List directory contents | `repoGetContentsList` | List entries (type/sha/size) in a directory at `path`+`ref`. Read-only. |
-| 5 | `forgejo_file_get` | Read file | `repoGetContents`, `repoGetRawFile` | Return base64-decoded UTF-8 content of a file at `path`+`ref`, plus commit/sha metadata (see block above). Read-only. |
-| 6 | `forgejo_diff_get` | Get diff | `repoCompareDiff`, `repoDownloadPullDiffOrPatch` | Return a unified diff between two refs (`basehead`) or for a PR, as text. Read-only. |
-| 7 | `forgejo_commit_list` | List commits | `repoGetAllCommits` | List commits of a repo branch with pagination. Read-only. |
-| 8 | `forgejo_branch_list` | List branches | `repoListBranches` | List branches of a repo. Read-only. |
-| 9 | `forgejo_issue_list` | List issues | `issueListIssues` | List issues with a `state` filter (`open`/`closed`/`all`) + pagination. Read-only. |
-| 10 | `forgejo_issue_get` | Get issue + comments | `issueGetIssue`, `issueGetComments` | Single call returning an issue **and** its comments. Read-only. |
-| 11 | `forgejo_pull_list` | List pull requests | `repoListPullRequests` | List PRs with a `state` filter + pagination. Read-only. |
-| 12 | `forgejo_pull_get` | Get pull request + files + checks | `repoGetPullRequest`, `repoGetPullRequestFiles`, `repoGetCombinedStatusByRef` | Single call returning a PR **with** its changed files **and** combined checks status. Read-only. |
-| 13 | `forgejo_release_list` | List releases | `repoListReleases`, `repoGetLatestRelease` | List releases of a repo, or fetch the latest. Read-only. |
+| # | Tool | Title | Forgejo operationId(s) | Status | Instructions (abridged) |
+|---|------|-------|------------------------|--------|--------------------------|
+| 1 | `forgejo_repo_search` | Search repositories | `repoSearch` | planned | Search the Forgejo instance by `q`, `topic`, `sort`, `order`, `private`. Returns matching repos (id, full name, visibility, default branch, description). `idempotentHint: true`. |
+| 2 | `forgejo_repo_get` | Get repository | `repoGet`, `repoGetByID` | **implemented** | Return details of one repo by owner+name (or id). Read-only; never modifies. |
+| 3 | `forgejo_org_list` | List my organizations | `orgListCurrentUserOrgs` | **implemented** | List the organizations the current user belongs to. Read-only. |
+| 4 | `forgejo_repo_list_contents` | List directory contents | `repoGetContentsList` | **implemented** | List entries (type/sha/size) in a directory at `path`+`ref`. Read-only. |
+| 5 | `forgejo_file_get` | Read file | `repoGetContents`, `repoGetRawFile` | **implemented** | Return base64-decoded UTF-8 content of a file at `path`+`ref`, plus commit/sha metadata (see block above). Read-only. |
+| 6 | `forgejo_diff_get` | Get diff | `repoCompareDiff`, `repoDownloadPullDiffOrPatch` | planned | Return a unified diff between two refs (`basehead`) or for a PR, as text. Read-only. |
+| 7 | `forgejo_commit_list` | List commits | `repoGetAllCommits` | planned | List commits of a repo branch with pagination. Read-only. |
+| 8 | `forgejo_branch_list` | List branches | `repoListBranches` | planned | List branches of a repo. Read-only. |
+| 9 | `forgejo_issue_list` | List issues | `issueListIssues` | planned | List issues with a `state` filter (`open`/`closed`/`all`) + pagination. Read-only. |
+| 10 | `forgejo_issue_get` | Get issue + comments | `issueGetIssue`, `issueGetComments` | **implemented** | Single call returning an issue **and** its comments. Read-only. |
+| 11 | `forgejo_pull_list` | List pull requests | `repoListPullRequests` | planned | List PRs with a `state` filter + pagination. Read-only. |
+| 12 | `forgejo_pull_get` | Get pull request + files + checks | `repoGetPullRequest`, `repoGetPullRequestFiles`, `repoGetCombinedStatusByRef` | planned | Single call returning a PR **with** its changed files **and** combined checks status. Read-only. |
+| 13 | `forgejo_release_list` | List releases | `repoListReleases`, `repoGetLatestRelease` | planned | List releases of a repo, or fetch the latest. Read-only. |
 
 ### 6.2 WRITE / UPDATE — `readOnlyHint: false`, `destructiveHint: false`
 
-| # | Tool | Title | Forgejo operationId(s) | `idempotent` | Instructions (abridged) |
-|---|------|-------|------------------------|--------------|--------------------------|
-| 14 | `forgejo_repo_create` | Create repository | `createCurrentUserRepo` | false | Create a repo (`name`, optional `owner`/org, `private`, `auto_init`). Creating a name that already exists **conflicts** — not idempotent. |
-| 15 | `forgejo_file_write` | Write/update file | `repoCreateFile`, `repoUpdateFile` | false | **Single call covering create AND update**: write `content` (text, base64-encoded on the wire) at `path`+`branch` with a commit `message`. Creates if absent, updates if present. Not idempotent: every call records a new commit (the blob sha changes), even for identical content. |
-| 16 | `forgejo_file_write_many` | Write multiple files | `repoChangeFiles` | false | Modify several files in **one commit** (multi-file single commit) at a branch with a commit message. |
-| 17 | `forgejo_branch_create` | Create branch | `repoCreateBranch` | false | Create a branch from an existing ref. Creating an existing branch **conflicts**. |
-| 18 | `forgejo_issue_create` | Create issue | `issueCreateIssue` | false | Create an issue with `title`, `body`, `labels`, `milestone`. |
-| 19 | `forgejo_issue_update` | Update/close/reopen issue | `issueEditIssue` | true | **Single tool handles edit + close + reopen**: update fields; set `state` to `open`/`closed`. Repeating the same edit is idempotent. |
-| 20 | `forgejo_issue_comment_add` | Add issue comment | `issueCreateComment` | false | Append a comment to an issue. Each call adds a new comment. |
-| 21 | `forgejo_pull_create` | Create pull request | `repoCreatePullRequest` | false | Open a PR from `head`→`base` with `title`/`body`. |
-| 22 | `forgejo_pull_update` | Update/close/reopen PR | `repoEditPullRequest` | true | **Single tool handles edit + close + reopen**: update fields; set `state`. |
-| 23 | `forgejo_pull_merge` | Merge pull request | `repoMergePullRequest`, `repoPullRequestIsMerged` | false | Merge a PR with a `merge`/`squash`/`rebase` method and report the result (merged vs already-merged). |
-| 24 | `forgejo_pull_review` | Review pull request | `repoCreatePullReview`, `repoSubmitPullReview` | false | **Create AND submit** a PR review (`approve`/`comment`/`request_changes`) in one call. |
-| 25 | `forgejo_release_create` | Create release | `repoCreateRelease` | false | Create a release for an existing `tag` with `title`/`notes`. |
+| # | Tool | Title | Forgejo operationId(s) | Status | `idempotent` | Instructions (abridged) |
+|---|------|-------|------------------------|--------|--------------|--------------------------|
+| 14 | `forgejo_repo_create` | Create repository | `createCurrentUserRepo` | planned | false | Create a repo (`name`, optional `owner`/org, `private`, `auto_init`). Creating a name that already exists **conflicts** — not idempotent. |
+| 15 | `forgejo_file_write` | Write/update file | `repoCreateFile`, `repoUpdateFile` | planned | false | **Single call covering create AND update**: write `content` (text, base64-encoded on the wire) at `path`+`branch` with a commit `message`. Creates if absent, updates if present. Not idempotent: every call records a new commit (the blob sha changes), even for identical content. |
+| 16 | `forgejo_file_write_many` | Write multiple files | `repoChangeFiles` | planned | false | Modify several files in **one commit** (multi-file single commit) at a branch with a commit message. |
+| 17 | `forgejo_branch_create` | Create branch | `repoCreateBranch` | planned | false | Create a branch from an existing ref. Creating an existing branch **conflicts**. |
+| 18 | `forgejo_issue_create` | Create issue | `issueCreateIssue` | planned | false | Create an issue with `title`, `body`, `labels`, `milestone`. |
+| 19 | `forgejo_issue_update` | Update/close/reopen issue | `issueEditIssue` | planned | true | **Single tool handles edit + close + reopen**: update fields; set `state` to `open`/`closed`. Repeating the same edit is idempotent. |
+| 20 | `forgejo_issue_comment_add` | Add issue comment | `issueCreateComment` | planned | false | Append a comment to an issue. Each call adds a new comment. |
+| 21 | `forgejo_pull_create` | Create pull request | `repoCreatePullRequest` | planned | false | Open a PR from `head`→`base` with `title`/`body`. |
+| 22 | `forgejo_pull_update` | Update/close/reopen PR | `repoEditPullRequest` | planned | true | **Single tool handles edit + close + reopen**: update fields; set `state`. |
+| 23 | `forgejo_pull_merge` | Merge pull request | `repoMergePullRequest`, `repoPullRequestIsMerged` | planned | false | Merge a PR with a `merge`/`squash`/`rebase` method and report the result (merged vs already-merged). |
+| 24 | `forgejo_pull_review` | Review pull request | `repoCreatePullReview`, `repoSubmitPullReview` | planned | false | **Create AND submit** a PR review (`approve`/`comment`/`request_changes`) in one call. |
+| 25 | `forgejo_release_create` | Create release | `repoCreateRelease` | planned | false | Create a release for an existing `tag` with `title`/`notes`. |
 
 ### 6.3 DELETE — `readOnlyHint: false`, `destructiveHint: true`
 
-| # | Tool | Title | Forgejo operationId(s) | Instructions (abridged) |
-|---|------|-------|------------------------|--------------------------|
-| 26 | `forgejo_file_delete` | Delete file | `repoDeleteFile` | Delete a file at `path`+`branch` with a commit `message`. **Destructive** — confirm before use. |
-| 27 | `forgejo_branch_delete` | Delete branch | `repoDeleteBranch` | Delete a branch. **Destructive** — confirm before use; will not delete the default branch. |
-| 28 | `forgejo_issue_delete` | Delete issue | `issueDelete` | Permanently delete an issue. **Destructive** — confirm before use. |
-| 29 | `forgejo_comment_delete` | Delete comment | `issueDeleteComment` | Delete an issue/PR comment. **Destructive** — confirm before use. |
-| 30 | `forgejo_release_delete` | Delete release | `repoDeleteRelease` | Delete a release (tag remains). **Destructive** — confirm before use. |
-| 31 | `forgejo_repo_delete` | Delete repository | `repoDelete` | **Permanently delete a repository.** Highly destructive — instructions require explicit user confirmation before invoking. |
+| # | Tool | Title | Forgejo operationId(s) | Status | Instructions (abridged) |
+|---|------|-------|------------------------|--------|--------------------------|
+| 26 | `forgejo_file_delete` | Delete file | `repoDeleteFile` | planned | Delete a file at `path`+`branch` with a commit `message`. **Destructive** — confirm before use. |
+| 27 | `forgejo_branch_delete` | Delete branch | `repoDeleteBranch` | planned | Delete a branch. **Destructive** — confirm before use; will not delete the default branch. |
+| 28 | `forgejo_issue_delete` | Delete issue | `issueDelete` | planned | Permanently delete an issue. **Destructive** — confirm before use. |
+| 29 | `forgejo_comment_delete` | Delete comment | `issueDeleteComment` | planned | Delete an issue/PR comment. **Destructive** — confirm before use. |
+| 30 | `forgejo_release_delete` | Delete release | `repoDeleteRelease` | planned | Delete a release (tag remains). **Destructive** — confirm before use. |
+| 31 | `forgejo_repo_delete` | Delete repository | `repoDelete` | planned | **Permanently delete a repository.** Highly destructive — instructions require explicit user confirmation before invoking. |
 
 > **Data-hygiene (S2):** none of the above tools accept or return a token/credential. Auth is injected server-side from `FORGEJO_TOKEN`; outputs never contain it.
 
