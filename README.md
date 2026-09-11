@@ -7,14 +7,20 @@
 [![License](https://img.shields.io/github/license/teran/mcp-forgejo)](LICENSE)
 [![MCP](https://img.shields.io/badge/MCP-Server-blue)](https://modelcontextprotocol.io)
 [![Go Version](https://img.shields.io/github/go-mod/go-version/teran/mcp-forgejo)](go.mod)
+[![Test Coverage](https://img.shields.io/badge/coverage-%E2%89%A595%25-brightgreen)](https://github.com/teran/mcp-forgejo/actions/workflows/ci.yml)
+[![gosec](https://img.shields.io/badge/gosec-passing-brightgreen)](https://github.com/teran/mcp-forgejo/actions/workflows/ci.yml)
+[![govulncheck](https://img.shields.io/badge/govulncheck-passing-brightgreen)](https://github.com/teran/mcp-forgejo/actions/workflows/ci.yml)
+[![gremlins](https://img.shields.io/badge/gremlins-passing-brightgreen)](https://github.com/teran/mcp-forgejo/actions/workflows/ci.yml)
 
 > **Badge note:** a `pkg.go.dev` / "Go Reference" badge is **intentionally
 > omitted**. The module path `example.com/...` is a **placeholder** for the
 > internal-only path (see `SPEC.md` §5 S6) and is not published to pkg.go.dev,
 > so such a badge would never resolve and would leak the internal module
-> location. The CI badge above
-> covers lint, tests, coverage, gosec, govulncheck, go-arch-lint and gremlins
-> (see `.github/workflows/ci.yml`).
+> location. The **Test Coverage**, **gosec**, **govulncheck** and **gremlins**
+> badges above are **placeholders wired to the CI source** — the checks they
+> represent are enforced in `.github/workflows/ci.yml` (the `coverage` gate
+> requires **≥ 95%**, gosec/govulncheck findings are fixed-not-suppressed, and
+> gremlins runs as a hard mutation-testing gate).
 
 A [Model Context Protocol](https://modelcontextprotocol.io) server that wraps the
 **Forgejo REST API** so a model-driven client can perform common
