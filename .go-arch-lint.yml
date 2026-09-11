@@ -50,6 +50,7 @@ vendors:
   mcp-sdk:     { in: github.com/modelcontextprotocol/go-sdk/** }
   logrus:      { in: [ github.com/sirupsen/logrus, github.com/sirupsen/logrus/** ] }
   envconfig:   { in: [ github.com/kelseyhightower/envconfig, github.com/kelseyhightower/envconfig/** ] }
+  resty:       { in: [ resty.dev/v3, resty.dev/v3/** ] }
 
 # Global rules. depOnAnyVendor = false keeps us honest about external deps.
 # deepScan is left OFF: the server layer intentionally wires dependencies by
@@ -83,10 +84,13 @@ deps:
     mayDependOn:
       - domain
 
-  # 4. infrastructure implements the Forgejo REST client over domain interfaces.
+  # 4. infrastructure implements the Forgejo REST client over domain interfaces,
+  #    using resty.dev/v3 as its outbound HTTP transport (SPEC G9).
   infrastructure:
     mayDependOn:
       - domain
+    canUse:
+      - resty
 
   # 5. server wires tools + transports; it may reach domain, application and
   #    infrastructure (it is the adapter that binds them together).

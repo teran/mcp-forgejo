@@ -76,7 +76,7 @@ internal/
                          # Release, Organization, Comment, Branch, Commit). No deps.
   application/           # use cases / tool handlers implementing domain interfaces.
   infrastructure/
-    forgejo/             # Forgejo REST client (net/http) implementing the domain
+    forgejo/             # Forgejo REST client (resty.dev/v3) implementing the domain
                          # interfaces; auth header, pagination, error mapping.
   server/                # MCP tool registry + transport drivers (stdio, http/sse).
   config/                # envconfig Config struct + load/validate.
@@ -314,5 +314,5 @@ The following MUST / MUST NOT are satisfied by this SPEC and scaffold:
 - **L1–L5** logging channel per transport, `LOG_LEVEL`-gated, `LOG_FILENAME`/`LOG_FORMAT` (§7); **L6** startup banner first line per transport.
 - **B1** binary release on `v*` tags via GoReleaser; **B2** ldflags-embedded build metadata (`appName`/`appVersion`/`appCommitHash`/`appTimestamp`); **B4** image reuses the binary, never recompiles; **B5** banner format (§7, §8).
 - **R1** image build/publish for Hybrid; **R2** default branch `master`; **R3**/**R4** image tags (§8).
-- **G1** Go 1.27 pinned; **G2** Go stated; **G8** logrus.
+- **G1** Go 1.27 pinned; **G2** Go stated; **G8** logrus; **G9** outbound HTTP via resty.dev/v3 (§4.1).
 - **N1, N2, N3 (vacuous), N4, N5, N6, N7, N8, N9, N10, N11, N12, N13, N14, N15, N16, N17, N18, N19, N20** — all avoided/not violated.

@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"io"
-	"net/http"
 	"os"
 	"strings"
 	"testing"
@@ -49,7 +48,7 @@ func TestRunLoggingError(t *testing.T) {
 func TestRunBuildError(t *testing.T) {
 	setBaseEnv(t)
 	orig := buildServer
-	buildServer = func(forgejo.Config, *http.Client) (*mcp.Server, error) {
+	buildServer = func(forgejo.Config) (*mcp.Server, error) {
 		return nil, errors.New("build failed")
 	}
 	defer func() { buildServer = orig }()

@@ -2,6 +2,12 @@
 // domain interfaces and implements them by issuing HTTP requests to the remote
 // Forgejo instance, attaching the PAT as an Authorization header and mapping
 // HTTP status codes onto the domain error taxonomy.
+//
+// Outbound HTTP is performed through resty.dev/v3 (SPEC G9). The transport is
+// intentionally kept thin: no retry loop runs inside the client so transient
+// failures surface to the caller immediately and the MCP layer decides how to
+// report them. Timeout and header policy are set explicitly here rather than
+// inherited from package defaults.
 package forgejo
 
 import (
@@ -9,15 +15,20 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
-	"io"
 	"net/http"
 	"net/url"
 	"strconv"
 	"strings"
+	"time"
 	"unicode/utf8"
 
 	"example.com/teran/mcp-forgejo/internal/domain"
+	"resty.dev/v3"
 )
+
+// requestTimeout is the explicit per-request timeout applied to every call.
+// Forgejo read endpoints are expected to answer well within this bound.
+const requestTimeout = 30 * time.Second
 
 // Config carries the values the client needs to talk to Forgejo. It is a
 // small, transport-agnostic struct local to this package so the client does
@@ -29,21 +40,43 @@ type Config struct {
 
 // Client is a minimal Forgejo REST client implementing the domain services.
 type Client struct {
-	baseURL    string
-	token      string
-	httpClient *http.Client
+	resty *resty.Client
+	token string
 }
 
-// New constructs a Client. If httpClient is nil, http.DefaultClient is used.
-func New(cfg Config, httpClient *http.Client) *Client {
-	if httpClient == nil {
-		httpClient = http.DefaultClient
+// New constructs a Client using resty's default HTTP transport, pointed at
+// cfg.BaseURL with the PAT attached as an Authorization header.
+func New(cfg Config) *Client {
+	return newClient(cfg, nil)
+}
+
+// NewWithClient constructs a Client around an explicitly supplied *http.Client.
+// Tests inject the httptest server's client (or a transport that returns
+// synthetic errors) through this seam.
+func NewWithClient(cfg Config, hc *http.Client) *Client {
+	return newClient(cfg, hc)
+}
+
+// newClient is the shared constructor. When hc is nil resty's default
+// transport is used; otherwise the supplied client (and its transport) is used
+// verbatim so tests stay hermetic and offline.
+func newClient(cfg Config, hc *http.Client) *Client {
+	var rc *resty.Client
+	if hc == nil {
+		rc = resty.New()
+	} else {
+		rc = resty.NewWithClient(hc)
 	}
-	return &Client{
-		baseURL:    strings.TrimRight(cfg.BaseURL, "/"),
-		token:      cfg.Token,
-		httpClient: httpClient,
-	}
+
+	// Explicit transport policy (SPEC G9 / N23): a bounded per-request timeout
+	// and no in-client retry. Retries are the caller's decision; here a slow or
+	// failed upstream surfaces as a KindTransient error.
+	rc.SetBaseURL(strings.TrimRight(cfg.BaseURL, "/"))
+	rc.SetHeader("Authorization", "token "+cfg.Token)
+	rc.SetTimeout(requestTimeout)
+	rc.SetRetryCount(0)
+
+	return &Client{resty: rc, token: cfg.Token}
 }
 
 // GetRepository implements domain.RepositoryService.
@@ -155,38 +188,32 @@ func pathEscape(s string) string {
 	return url.PathEscape(s)
 }
 
-// do performs a request, sets the auth header, and decodes the JSON response
-// into out (if out is non-nil). Non-2xx responses are mapped onto the domain
-// error taxonomy; the token is redacted from any surfaced message.
+// do performs a request through resty, decodes the JSON response into out (if
+// out is non-nil) and maps failures onto the domain error taxonomy. The
+// response body is read eagerly so that a body-read failure is reported as a
+// KindTransient error rather than being silently swallowed. The PAT is always
+// redacted from any surfaced message (S2).
 func (c *Client) do(ctx context.Context, method, path string, query url.Values, out any) error {
-	u := c.baseURL + path
+	req := c.resty.R().
+		SetContext(ctx).
+		SetResponseBodyUnlimitedReads(true)
 	if len(query) > 0 {
-		u += "?" + query.Encode()
+		req = req.SetQueryParamsFromValues(query)
 	}
-	req, err := http.NewRequestWithContext(ctx, method, u, http.NoBody)
-	if err != nil {
-		return domain.NewForgejoError(domain.KindTransient, domain.Redact(fmt.Sprintf("build request: %v", err), c.token))
-	}
-	req.Header.Set("Authorization", "token "+c.token)
 
-	resp, err := c.httpClient.Do(req)
+	resp, err := req.Execute(method, path)
 	if err != nil {
 		return domain.NewForgejoError(domain.KindTransient, domain.Redact(fmt.Sprintf("request failed: %v", err), c.token))
 	}
-	defer func() { _ = resp.Body.Close() }()
 
-	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		body, _ := io.ReadAll(resp.Body)
-		return mapStatusError(resp.StatusCode, string(body), c.token)
+	if resp.StatusCode() < 200 || resp.StatusCode() >= 300 {
+		return mapStatusError(resp.StatusCode(), string(resp.Bytes()), c.token)
 	}
 
 	if out == nil {
 		return nil
 	}
-	body, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return domain.NewForgejoError(domain.KindTransient, "failed to read response body")
-	}
+	body := resp.Bytes()
 	if err := json.Unmarshal(body, out); err != nil {
 		return domain.NewForgejoError(domain.KindValidation, domain.Redact(fmt.Sprintf("failed to decode Forgejo response: %v", err), c.token))
 	}

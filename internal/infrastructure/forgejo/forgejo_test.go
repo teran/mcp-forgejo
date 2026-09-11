@@ -15,22 +15,41 @@ import (
 
 const testToken = "super-secret-pat"
 
-// newTestServer starts an httptest server and a client pointed at it.
+// newTestServer starts an httptest server and a client pointed at it. The
+// client is built with NewWithClient so the injected *http.Client carries the
+// test server's transport, keeping every test hermetic and offline.
 func newTestServer(t *testing.T, handler http.Handler) (*Client, *httptest.Server) {
 	t.Helper()
 	ts := httptest.NewServer(handler)
 	t.Cleanup(ts.Close)
-	c := New(Config{BaseURL: ts.URL, Token: testToken}, ts.Client())
+	c := NewWithClient(Config{BaseURL: ts.URL, Token: testToken}, ts.Client())
 	return c, ts
 }
 
-func TestNewDefaultsClient(t *testing.T) {
-	c := New(Config{BaseURL: "https://git.example.dev/", Token: "t"}, nil)
-	if c.httpClient != http.DefaultClient {
-		t.Error("expected http.DefaultClient when nil passed")
+func TestNew(t *testing.T) {
+	c := New(Config{BaseURL: "https://git.example.dev/", Token: testToken})
+	if c == nil {
+		t.Fatal("New returned nil client")
 	}
-	if c.baseURL != "https://git.example.dev" {
-		t.Errorf("baseURL = %q, want trailing slash trimmed", c.baseURL)
+}
+
+func TestNewWithClientInjectsHTTPClient(t *testing.T) {
+	var gotAuth string
+	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotAuth = r.Header.Get("Authorization")
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"id":1}`))
+	})
+	// Build the client directly (not via newTestServer) to prove the injected
+	// *http.Client is the one actually used for requests.
+	ts := httptest.NewServer(handler)
+	t.Cleanup(ts.Close)
+	c := NewWithClient(Config{BaseURL: ts.URL, Token: testToken}, ts.Client())
+	if _, err := c.GetRepository(context.Background(), "acme", "demo"); err != nil {
+		t.Fatalf("GetRepository() error = %v", err)
+	}
+	if gotAuth != "token "+testToken {
+		t.Errorf("auth = %q, want token "+testToken, gotAuth)
 	}
 }
 
@@ -123,6 +142,20 @@ func TestListContentsDecodesEntries(t *testing.T) {
 	}
 	if len(entries) != 1 || entries[0].Name != "a.go" || entries[0].Type != "file" || entries[0].SHA != "abc" || entries[0].Size != 10 {
 		t.Errorf("unexpected entries: %+v", entries)
+	}
+}
+
+func TestListContentsEmptyArray(t *testing.T) {
+	handler := http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = w.Write([]byte(`[]`))
+	})
+	c, _ := newTestServer(t, handler)
+	entries, err := c.ListContents(context.Background(), "acme", "demo", "", "", 0, 0)
+	if err != nil {
+		t.Fatalf("ListContents() error = %v", err)
+	}
+	if len(entries) != 0 {
+		t.Errorf("expected empty entries, got %+v", entries)
 	}
 }
 
@@ -269,6 +302,9 @@ func TestGetIssueAndComments(t *testing.T) {
 	}
 }
 
+// TestErrorMapping exercises the status-to-domain-kind mapping end-to-end
+// through a public method for the statuses the contract requires (404, 401,
+// 409, 500) plus the rest of the taxonomy.
 func TestErrorMapping(t *testing.T) {
 	tests := []struct {
 		name       string
@@ -306,6 +342,50 @@ func TestErrorMapping(t *testing.T) {
 			}
 			if !strings.Contains(fe.Message, tt.wantInBody) {
 				t.Errorf("Message = %q, want to contain %q", fe.Message, tt.wantInBody)
+			}
+		})
+	}
+}
+
+// TestMethodsServerError runs every public read method against a 5xx response
+// and asserts the error is transient and the PAT never leaks into the message.
+func TestMethodsServerError(t *testing.T) {
+	body := `{"message":"server boom "+` + `"` + testToken + `"}`
+	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusInternalServerError)
+		_, _ = w.Write([]byte(body))
+	})
+	c, _ := newTestServer(t, handler)
+
+	calls := []struct {
+		name string
+		call func() error
+	}{
+		{"GetRepository", func() error { _, err := c.GetRepository(context.Background(), "acme", "demo"); return err }},
+		{"ListContents", func() error { _, err := c.ListContents(context.Background(), "acme", "demo", "", "", 0, 0); return err }},
+		{"GetFile", func() error { _, err := c.GetFile(context.Background(), "acme", "demo", "f.go", ""); return err }},
+		{"ListOrganizations", func() error { _, err := c.ListOrganizations(context.Background()); return err }},
+		{"GetIssue", func() error { _, err := c.GetIssue(context.Background(), "acme", "demo", 1); return err }},
+		{"ListComments", func() error { _, err := c.ListComments(context.Background(), "acme", "demo", 1); return err }},
+	}
+	for _, tc := range calls {
+		t.Run(tc.name, func(t *testing.T) {
+			err := tc.call()
+			if err == nil {
+				t.Fatal("expected error for 5xx")
+			}
+			fe, ok := err.(*domain.ForgejoError)
+			if !ok {
+				t.Fatalf("expected *domain.ForgejoError, got %T", err)
+			}
+			if fe.Kind != domain.KindTransient {
+				t.Errorf("Kind = %q, want transient", fe.Kind)
+			}
+			if strings.Contains(err.Error(), testToken) {
+				t.Errorf("token leaked in error: %q", err.Error())
+			}
+			if !strings.Contains(err.Error(), "[REDACTED]") {
+				t.Errorf("expected [REDACTED] in error: %q", err.Error())
 			}
 		})
 	}
@@ -352,36 +432,34 @@ func TestNonJSONBodyParseError(t *testing.T) {
 	}
 }
 
-func TestEmptyOutNilBody(t *testing.T) {
-	var hit bool
+func TestEmptyBodyAt200ReturnsDecodeError(t *testing.T) {
 	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		hit = true
-		_, _ = w.Write([]byte(`ok`))
-	})
-	c, _ := newTestServer(t, handler)
-	if err := c.do(context.Background(), http.MethodGet, "/api/v1/user/orgs", nil, nil); err != nil {
-		t.Fatalf("do() with nil out error = %v", err)
-	}
-	if !hit {
-		t.Error("request not made")
-	}
-}
-
-func TestResponseReadError(t *testing.T) {
-	// A handler that panics mid-write can cause a body read error.
-	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Content-Type", "application/json")
-		_, _ = w.Write([]byte(`{"id":`))
+		w.WriteHeader(http.StatusOK)
 	})
 	c, _ := newTestServer(t, handler)
 	_, err := c.GetRepository(context.Background(), "acme", "demo")
 	if err == nil {
-		t.Fatal("expected error for malformed JSON")
+		t.Fatal("expected decode error for empty body")
+	}
+	fe, ok := err.(*domain.ForgejoError)
+	if !ok {
+		t.Fatalf("expected *domain.ForgejoError, got %T", err)
+	}
+	if fe.Kind != domain.KindValidation {
+		t.Errorf("Kind = %q, want validation for empty body decode", fe.Kind)
 	}
 }
 
+// netErrTransport returns a network-level error for every request, simulating
+// an unreachable upstream without touching the network.
+type netErrTransport struct{}
+
+func (netErrTransport) RoundTrip(*http.Request) (*http.Response, error) {
+	return nil, errors.New("dial tcp: connection refused")
+}
+
 func TestTransportErrorIsTransient(t *testing.T) {
-	c := New(Config{BaseURL: "http://127.0.0.1:1", Token: "t"}, &http.Client{})
+	c := NewWithClient(Config{BaseURL: "http://127.0.0.1:1", Token: testToken}, &http.Client{Transport: netErrTransport{}})
 	_, err := c.GetRepository(context.Background(), "acme", "demo")
 	if err == nil {
 		t.Fatal("expected transport error")
@@ -392,6 +470,119 @@ func TestTransportErrorIsTransient(t *testing.T) {
 	}
 	if fe.Kind != domain.KindTransient {
 		t.Errorf("Kind = %q, want transient", fe.Kind)
+	}
+	if strings.Contains(err.Error(), testToken) {
+		t.Errorf("token leaked in transport error: %q", err.Error())
+	}
+}
+
+// errReadCloser is a response body whose Read always fails.
+type errReadCloser struct{}
+
+func (errReadCloser) Read([]byte) (int, error) { return 0, errors.New("read boom") }
+func (errReadCloser) Close() error             { return nil }
+
+// errTransport returns a 200 response whose body fails on read.
+type errTransport struct{}
+
+func (errTransport) RoundTrip(*http.Request) (*http.Response, error) {
+	return &http.Response{
+		StatusCode: http.StatusOK,
+		Status:     "200 OK",
+		Header:     http.Header{},
+		Body:       errReadCloser{},
+	}, nil
+}
+
+func TestResponseBodyReadErrorIsTransient(t *testing.T) {
+	// A response body that errors on read must surface as a transient error
+	// for every read method.
+	c := NewWithClient(Config{BaseURL: "https://git.example.dev", Token: testToken}, &http.Client{Transport: errTransport{}})
+	calls := []struct {
+		name string
+		call func() error
+	}{
+		{"GetRepository", func() error { _, err := c.GetRepository(context.Background(), "acme", "demo"); return err }},
+		{"ListContents", func() error { _, err := c.ListContents(context.Background(), "acme", "demo", "", "", 0, 0); return err }},
+		{"GetFile", func() error { _, err := c.GetFile(context.Background(), "acme", "demo", "f.go", ""); return err }},
+		{"ListOrganizations", func() error { _, err := c.ListOrganizations(context.Background()); return err }},
+		{"GetIssue", func() error { _, err := c.GetIssue(context.Background(), "acme", "demo", 1); return err }},
+		{"ListComments", func() error { _, err := c.ListComments(context.Background(), "acme", "demo", 1); return err }},
+	}
+	for _, tc := range calls {
+		t.Run(tc.name, func(t *testing.T) {
+			err := tc.call()
+			if err == nil {
+				t.Fatal("expected error for failing response body read")
+			}
+			fe, ok := err.(*domain.ForgejoError)
+			if !ok {
+				t.Fatalf("expected *domain.ForgejoError, got %T", err)
+			}
+			if fe.Kind != domain.KindTransient {
+				t.Errorf("Kind = %q, want transient", fe.Kind)
+			}
+		})
+	}
+}
+
+// TestKindForStatus exercises every branch of kindForStatus directly so a
+// regressing/mutated mapping is caught.
+func TestKindForStatus(t *testing.T) {
+	tests := []struct {
+		status int
+		want   domain.ErrorKind
+	}{
+		{http.StatusUnauthorized, domain.KindUnauthorized},
+		{http.StatusForbidden, domain.KindForbidden},
+		{http.StatusNotFound, domain.KindNotFound},
+		{http.StatusUnprocessableEntity, domain.KindValidation},
+		{http.StatusConflict, domain.KindConflict},
+		{http.StatusLocked, domain.KindArchived},
+		{http.StatusInternalServerError, domain.KindTransient},
+		{http.StatusBadGateway, domain.KindTransient},
+		{http.StatusTeapot, domain.KindUnknown},
+		{http.StatusOK, domain.KindUnknown},
+	}
+	for _, tt := range tests {
+		if got := kindForStatus(tt.status); got != tt.want {
+			t.Errorf("kindForStatus(%d) = %q, want %q", tt.status, got, tt.want)
+		}
+	}
+}
+
+// TestMapStatusError exercises mapStatusError directly: body fallback, body
+// passthrough and token redaction.
+func TestMapStatusError(t *testing.T) {
+	tests := []struct {
+		name      string
+		status    int
+		body      string
+		wantKind  domain.ErrorKind
+		wantInMsg string
+	}{
+		{"empty body fallback", http.StatusNotFound, "", domain.KindNotFound, "Forgejo resource not found"},
+		{"body passthrough", http.StatusConflict, `{"message":"nope"}`, domain.KindConflict, "nope"},
+		{"redact token", http.StatusInternalServerError, "boom " + testToken, domain.KindTransient, "[REDACTED]"},
+		{"unknown empty", http.StatusTeapot, "", domain.KindUnknown, "418"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			err := mapStatusError(tt.status, tt.body, testToken)
+			fe, ok := err.(*domain.ForgejoError)
+			if !ok {
+				t.Fatalf("expected *domain.ForgejoError, got %T", err)
+			}
+			if fe.Kind != tt.wantKind {
+				t.Errorf("Kind = %q, want %q", fe.Kind, tt.wantKind)
+			}
+			if !strings.Contains(fe.Message, tt.wantInMsg) {
+				t.Errorf("Message = %q, want to contain %q", fe.Message, tt.wantInMsg)
+			}
+			if strings.Contains(fe.Message, testToken) {
+				t.Errorf("token leaked: %q", fe.Message)
+			}
+		})
 	}
 }
 
@@ -419,56 +610,5 @@ func TestGetFileWithRef(t *testing.T) {
 	}
 	if f.Content != "x" {
 		t.Errorf("content = %q", f.Content)
-	}
-}
-
-func TestDoBuildRequestError(t *testing.T) {
-	// An invalid HTTP method makes http.NewRequestWithContext fail, which must
-	// surface as a transient ForgejoError.
-	c := New(Config{BaseURL: "https://git.example.dev", Token: testToken}, &http.Client{})
-	err := c.do(context.Background(), "bad method", "/api/v1/x", nil, nil)
-	if err == nil {
-		t.Fatal("expected error for invalid HTTP method")
-	}
-	fe, ok := err.(*domain.ForgejoError)
-	if !ok {
-		t.Fatalf("expected *domain.ForgejoError, got %T", err)
-	}
-	if fe.Kind != domain.KindTransient {
-		t.Errorf("Kind = %q, want transient", fe.Kind)
-	}
-}
-
-// errReadCloser is a response body whose Read always fails.
-type errReadCloser struct{}
-
-func (errReadCloser) Read([]byte) (int, error) { return 0, errors.New("read boom") }
-func (errReadCloser) Close() error             { return nil }
-
-// errTransport returns a 200 response whose body fails on read.
-type errTransport struct{}
-
-func (errTransport) RoundTrip(*http.Request) (*http.Response, error) {
-	return &http.Response{
-		StatusCode: http.StatusOK,
-		Status:     "200 OK",
-		Header:     http.Header{},
-		Body:       errReadCloser{},
-	}, nil
-}
-
-func TestDoResponseBodyReadError(t *testing.T) {
-	// A response body that errors on read must surface as a transient error.
-	c := New(Config{BaseURL: "https://git.example.dev", Token: testToken}, &http.Client{Transport: errTransport{}})
-	err := c.do(context.Background(), http.MethodGet, "/api/v1/repos/a/b", nil, &domain.Repository{})
-	if err == nil {
-		t.Fatal("expected error for failing response body read")
-	}
-	fe, ok := err.(*domain.ForgejoError)
-	if !ok {
-		t.Fatalf("expected *domain.ForgejoError, got %T", err)
-	}
-	if fe.Kind != domain.KindTransient {
-		t.Errorf("Kind = %q, want transient", fe.Kind)
 	}
 }

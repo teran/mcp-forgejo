@@ -51,7 +51,7 @@ func setup(t *testing.T) (*mcp.ClientSession, *httptest.Server) {
 	ts := httptest.NewServer(mockForgejo())
 	t.Cleanup(ts.Close)
 
-	s, err := Build(forgejo.Config{BaseURL: ts.URL, Token: testToken}, ts.Client())
+	s, err := Build(forgejo.Config{BaseURL: ts.URL, Token: testToken})
 	if err != nil {
 		t.Fatalf("Build() error = %v", err)
 	}
@@ -234,7 +234,7 @@ func TestToolErrorSurfacesIsError(t *testing.T) {
 }
 
 func TestHTTPHandlerNonNil(t *testing.T) {
-	s, err := Build(forgejo.Config{BaseURL: "https://x", Token: "t"}, http.DefaultClient)
+	s, err := Build(forgejo.Config{BaseURL: "https://x", Token: "t"})
 	if err != nil {
 		t.Fatalf("Build() error = %v", err)
 	}
@@ -246,7 +246,7 @@ func TestHTTPHandlerNonNil(t *testing.T) {
 func TestHTTPHandlerServesRequest(t *testing.T) {
 	// Exercise the streamable HTTP handler end to end so the getServer closure
 	// that returns the mcp.Server is actually invoked.
-	s, err := Build(forgejo.Config{BaseURL: "https://x", Token: "t"}, http.DefaultClient)
+	s, err := Build(forgejo.Config{BaseURL: "https://x", Token: "t"})
 	if err != nil {
 		t.Fatalf("Build() error = %v", err)
 	}
@@ -265,8 +265,8 @@ func TestHTTPHandlerServesRequest(t *testing.T) {
 	}
 }
 
-func TestBuildWithNilHTTPClient(t *testing.T) {
-	if _, err := Build(forgejo.Config{BaseURL: "https://x", Token: "t"}, nil); err != nil {
+func TestBuild(t *testing.T) {
+	if _, err := Build(forgejo.Config{BaseURL: "https://x", Token: "t"}); err != nil {
 		t.Fatalf("Build() error = %v", err)
 	}
 }

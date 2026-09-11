@@ -5,7 +5,6 @@ package server
 
 import (
 	"context"
-	"net/http"
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 
@@ -20,10 +19,10 @@ const (
 	implVersion = "0.1.0"
 )
 
-// Build constructs an *mcp.Server with all registered tools, bound to the
-// given Forgejo client.
-func Build(cfg forgejo.Config, httpClient *http.Client) (*mcp.Server, error) {
-	client := forgejo.New(cfg, httpClient)
+// Build constructs an *mcp.Server with all registered tools, bound to a
+// Forgejo client built from cfg (the client owns its resty HTTP transport).
+func Build(cfg forgejo.Config) (*mcp.Server, error) {
+	client := forgejo.New(cfg)
 	s := mcp.NewServer(&mcp.Implementation{Name: implName, Version: implVersion}, &mcp.ServerOptions{})
 	registerTools(s, client)
 	return s, nil
