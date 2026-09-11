@@ -41,3 +41,55 @@ func GetIssue(ctx context.Context, svc domain.IssueService, owner, repo string, 
 	}
 	return domain.IssueWithComments{Issue: issue, Comments: comments}, nil
 }
+
+// SearchRepos searches the Forgejo instance for repositories.
+func SearchRepos(ctx context.Context, svc domain.SearchService, q, topic, sort, order string, private *bool) ([]domain.Repository, error) {
+	return svc.SearchRepos(ctx, q, topic, sort, order, private)
+}
+
+// GetDiff returns a unified diff for a compare range (basehead) or for a
+// single pull request (when prIndex > 0 and basehead is empty).
+func GetDiff(ctx context.Context, svc domain.DiffService, owner, repo, basehead string, prIndex int64) (domain.Diff, error) {
+	if basehead != "" {
+		return svc.GetDiff(ctx, owner, repo, basehead)
+	}
+	return svc.GetPullDiff(ctx, owner, repo, prIndex)
+}
+
+// ListCommits lists commits of a repository branch with pagination.
+func ListCommits(ctx context.Context, svc domain.CommitService, owner, repo, branch string, page, limit int) ([]domain.Commit, error) {
+	return svc.ListCommits(ctx, owner, repo, branch, page, limit)
+}
+
+// ListBranches lists the branches of a repository.
+func ListBranches(ctx context.Context, svc domain.BranchService, owner, repo string) ([]domain.Branch, error) {
+	return svc.ListBranches(ctx, owner, repo)
+}
+
+// ListIssues lists issues filtered by state with pagination.
+func ListIssues(ctx context.Context, svc domain.IssueListService, owner, repo, state string, page, limit int) ([]domain.Issue, error) {
+	return svc.ListIssues(ctx, owner, repo, state, page, limit)
+}
+
+// ListPullRequests lists pull requests filtered by state with pagination.
+func ListPullRequests(ctx context.Context, svc domain.PullRequestService, owner, repo, state string, page, limit int) ([]domain.PullRequest, error) {
+	return svc.ListPullRequests(ctx, owner, repo, state, page, limit)
+}
+
+// GetPullRequest returns a pull request together with its files and checks.
+func GetPullRequest(ctx context.Context, svc domain.PullRequestService, owner, repo string, number int64) (domain.PullRequestDetail, error) {
+	return svc.GetPullRequest(ctx, owner, repo, number)
+}
+
+// ListReleases lists the releases of a repository, or fetches the latest
+// release when latest is true (returned as a single-element slice).
+func ListReleases(ctx context.Context, svc domain.ReleaseService, owner, repo string, latest bool, page, limit int) ([]domain.Release, error) {
+	if latest {
+		rel, err := svc.GetLatestRelease(ctx, owner, repo)
+		if err != nil {
+			return nil, err
+		}
+		return []domain.Release{rel}, nil
+	}
+	return svc.ListReleases(ctx, owner, repo, page, limit)
+}

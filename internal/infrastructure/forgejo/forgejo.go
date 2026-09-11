@@ -141,6 +141,228 @@ func (c *Client) ListComments(ctx context.Context, owner, repo string, index int
 	return out, err
 }
 
+// SearchRepos implements domain.SearchService. The Forgejo search endpoint
+// wraps the result list in a {"ok":true,"data":[...]} envelope, so the client
+// unwraps ".data" before returning.
+func (c *Client) SearchRepos(ctx context.Context, q, topic, sort, order string, private *bool) ([]domain.Repository, error) {
+	qp := url.Values{}
+	if q != "" {
+		qp.Set("q", q)
+	}
+	if topic != "" {
+		qp.Set("topic", topic)
+	}
+	if sort != "" {
+		qp.Set("sort", sort)
+	}
+	if order != "" {
+		qp.Set("order", order)
+	}
+	if private != nil {
+		qp.Set("private", strconv.FormatBool(*private))
+	}
+	var wrapped repoSearchResponse
+	if err := c.do(ctx, http.MethodGet, "/api/v1/repos/search", qp, &wrapped); err != nil {
+		return nil, err
+	}
+	return wrapped.Data, nil
+}
+
+// GetDiff implements domain.DiffService. The compare endpoint returns a plain
+// text unified diff, so the body is read through the text path, not JSON.
+func (c *Client) GetDiff(ctx context.Context, owner, repo, basehead string) (domain.Diff, error) {
+	path := fmt.Sprintf("/api/v1/repos/%s/%s/compare/%s", pathEscape(owner), pathEscape(repo), pathEscape(basehead))
+	text, err := c.doText(ctx, http.MethodGet, path, nil)
+	if err != nil {
+		return domain.Diff{}, err
+	}
+	return domain.Diff{BaseHead: basehead, Text: text}, nil
+}
+
+// GetPullDiff implements domain.DiffService. The pull request diff endpoint
+// carries a ".diff" suffix and returns plain text.
+func (c *Client) GetPullDiff(ctx context.Context, owner, repo string, index int64) (domain.Diff, error) {
+	path := fmt.Sprintf("/api/v1/repos/%s/%s/pulls/%s.diff", pathEscape(owner), pathEscape(repo), strconv.FormatInt(index, 10))
+	text, err := c.doText(ctx, http.MethodGet, path, nil)
+	if err != nil {
+		return domain.Diff{}, err
+	}
+	return domain.Diff{BaseHead: "", Text: text}, nil
+}
+
+// ListCommits implements domain.CommitService. Forgejo nests the message and
+// author inside a "commit" object, so the wire shape is decoded first and then
+// flattened into domain.Commit.
+func (c *Client) ListCommits(ctx context.Context, owner, repo, branch string, page, limit int) ([]domain.Commit, error) {
+	path := fmt.Sprintf("/api/v1/repos/%s/%s/commits", pathEscape(owner), pathEscape(repo))
+	qp := url.Values{}
+	if branch != "" {
+		qp.Set("sha", branch)
+	}
+	setPagination(qp, page, limit)
+	var wire []commitWire
+	if err := c.do(ctx, http.MethodGet, path, qp, &wire); err != nil {
+		return nil, err
+	}
+	out := make([]domain.Commit, 0, len(wire))
+	for _, w := range wire {
+		out = append(out, domain.Commit{
+			SHA:     w.SHA,
+			Message: w.Commit.Message,
+			Author:  w.Commit.Author.Name,
+			Date:    w.Commit.Author.Date,
+		})
+	}
+	return out, nil
+}
+
+// ListBranches implements domain.BranchService. The commit the branch points
+// to is nested under "commit.id", flattened into CommitSHA.
+func (c *Client) ListBranches(ctx context.Context, owner, repo string) ([]domain.Branch, error) {
+	path := fmt.Sprintf("/api/v1/repos/%s/%s/branches", pathEscape(owner), pathEscape(repo))
+	var wire []branchWire
+	if err := c.do(ctx, http.MethodGet, path, nil, &wire); err != nil {
+		return nil, err
+	}
+	out := make([]domain.Branch, 0, len(wire))
+	for _, w := range wire {
+		out = append(out, domain.Branch{
+			Name:      w.Name,
+			Protected: w.Protected,
+			Default:   w.Default,
+			CommitSHA: w.Commit.ID,
+		})
+	}
+	return out, nil
+}
+
+// ListIssues implements domain.IssueListService.
+func (c *Client) ListIssues(ctx context.Context, owner, repo, state string, page, limit int) ([]domain.Issue, error) {
+	path := fmt.Sprintf("/api/v1/repos/%s/%s/issues", pathEscape(owner), pathEscape(repo))
+	qp := url.Values{}
+	if state != "" {
+		qp.Set("state", state)
+	}
+	setPagination(qp, page, limit)
+	var out []domain.Issue
+	err := c.do(ctx, http.MethodGet, path, qp, &out)
+	return out, err
+}
+
+// ListPullRequests implements domain.PullRequestService.
+func (c *Client) ListPullRequests(ctx context.Context, owner, repo, state string, page, limit int) ([]domain.PullRequest, error) {
+	path := fmt.Sprintf("/api/v1/repos/%s/%s/pulls", pathEscape(owner), pathEscape(repo))
+	qp := url.Values{}
+	if state != "" {
+		qp.Set("state", state)
+	}
+	setPagination(qp, page, limit)
+	var out []domain.PullRequest
+	err := c.do(ctx, http.MethodGet, path, qp, &out)
+	return out, err
+}
+
+// GetPullRequest implements domain.PullRequestService. A single call composes
+// three HTTP requests in order (SPEC 6.1 #12 / M5): the pull request, its
+// changed files, and the combined commit status keyed by head.sha.
+func (c *Client) GetPullRequest(ctx context.Context, owner, repo string, index int64) (domain.PullRequestDetail, error) {
+	prPath := fmt.Sprintf("/api/v1/repos/%s/%s/pulls/%s", pathEscape(owner), pathEscape(repo), strconv.FormatInt(index, 10))
+	var prWire pullRequestWire
+	if err := c.do(ctx, http.MethodGet, prPath, nil, &prWire); err != nil {
+		return domain.PullRequestDetail{}, err
+	}
+
+	filesPath := fmt.Sprintf("/api/v1/repos/%s/%s/pulls/%s/files", pathEscape(owner), pathEscape(repo), strconv.FormatInt(index, 10))
+	var files []domain.PullFile
+	if err := c.do(ctx, http.MethodGet, filesPath, nil, &files); err != nil {
+		return domain.PullRequestDetail{}, err
+	}
+
+	statusPath := fmt.Sprintf("/api/v1/repos/%s/%s/commits/%s/status", pathEscape(owner), pathEscape(repo), pathEscape(prWire.Head.SHA))
+	var status combinedStatusWire
+	if err := c.do(ctx, http.MethodGet, statusPath, nil, &status); err != nil {
+		return domain.PullRequestDetail{}, err
+	}
+
+	checks := make([]domain.Check, 0, len(status.Statuses))
+	for _, s := range status.Statuses {
+		checks = append(checks, domain.Check{
+			Context:     s.Context,
+			State:       s.State,
+			TargetURL:   s.TargetURL,
+			Description: s.Description,
+		})
+	}
+
+	return domain.PullRequestDetail{PullRequest: prWire.PullRequest, Files: files, Checks: checks}, nil
+}
+
+// ListReleases implements domain.ReleaseService.
+func (c *Client) ListReleases(ctx context.Context, owner, repo string, page, limit int) ([]domain.Release, error) {
+	path := fmt.Sprintf("/api/v1/repos/%s/%s/releases", pathEscape(owner), pathEscape(repo))
+	qp := url.Values{}
+	setPagination(qp, page, limit)
+	var out []domain.Release
+	err := c.do(ctx, http.MethodGet, path, qp, &out)
+	return out, err
+}
+
+// GetLatestRelease implements domain.ReleaseService.
+func (c *Client) GetLatestRelease(ctx context.Context, owner, repo string) (domain.Release, error) {
+	path := fmt.Sprintf("/api/v1/repos/%s/%s/releases/latest", pathEscape(owner), pathEscape(repo))
+	var out domain.Release
+	err := c.do(ctx, http.MethodGet, path, nil, &out)
+	return out, err
+}
+
+// repoSearchResponse is the wire envelope of the Forgejo repo search endpoint.
+type repoSearchResponse struct {
+	OK   bool                `json:"ok"`
+	Data []domain.Repository `json:"data"`
+}
+
+// commitWire is the nested wire shape of a Forgejo commit list item.
+type commitWire struct {
+	SHA    string `json:"sha"`
+	Commit struct {
+		Message string `json:"message"`
+		Author  struct {
+			Name string `json:"name"`
+			Date string `json:"date"`
+		} `json:"author"`
+	} `json:"commit"`
+}
+
+// branchWire is the nested wire shape of a Forgejo branch list item.
+type branchWire struct {
+	Name      string `json:"name"`
+	Protected bool   `json:"protected"`
+	Default   bool   `json:"default"`
+	Commit    struct {
+		ID string `json:"id"`
+	} `json:"commit"`
+}
+
+// pullRequestWire embeds the domain PullRequest (fields map directly) and
+// additionally captures head.sha, which the combined-status call needs.
+type pullRequestWire struct {
+	domain.PullRequest
+	Head struct {
+		SHA string `json:"sha"`
+	} `json:"head"`
+}
+
+// combinedStatusWire is the wire shape of the Forgejo combined status endpoint.
+type combinedStatusWire struct {
+	State    string `json:"state"`
+	Statuses []struct {
+		Context     string `json:"context"`
+		State       string `json:"state"`
+		TargetURL   string `json:"target_url"`
+		Description string `json:"description"`
+	} `json:"statuses"`
+}
+
 // contentResponse is the wire shape of a single contents entry returned by the
 // Forgejo repoGetContents endpoint.
 type contentResponse struct {
@@ -218,6 +440,28 @@ func (c *Client) do(ctx context.Context, method, path string, query url.Values, 
 		return domain.NewForgejoError(domain.KindValidation, domain.Redact(fmt.Sprintf("failed to decode Forgejo response: %v", err), c.token))
 	}
 	return nil
+}
+
+// doText performs a request and returns the raw response body as a string
+// (for endpoints that return plain text, e.g. diffs) instead of decoding JSON.
+// Failures map onto the domain error taxonomy exactly like do.
+func (c *Client) doText(ctx context.Context, method, path string, query url.Values) (string, error) {
+	req := c.resty.R().
+		SetContext(ctx).
+		SetResponseBodyUnlimitedReads(true)
+	if len(query) > 0 {
+		req = req.SetQueryParamsFromValues(query)
+	}
+
+	resp, err := req.Execute(method, path)
+	if err != nil {
+		return "", domain.NewForgejoError(domain.KindTransient, domain.Redact(fmt.Sprintf("request failed: %v", err), c.token))
+	}
+
+	if resp.StatusCode() < 200 || resp.StatusCode() >= 300 {
+		return "", mapStatusError(resp.StatusCode(), string(resp.Bytes()), c.token)
+	}
+	return string(resp.Bytes()), nil
 }
 
 // kindForStatus maps a Forgejo HTTP status onto the domain error taxonomy.

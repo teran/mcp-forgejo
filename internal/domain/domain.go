@@ -189,3 +189,127 @@ type IssueService interface {
 	// ListComments returns the comments of a single issue.
 	ListComments(ctx context.Context, owner, repo string, index int64) ([]Comment, error)
 }
+
+// Diff is the unified text diff between two refs (basehead) or for a single
+// pull request. The body is plain text, never JSON.
+type Diff struct {
+	BaseHead string `json:"basehead"`
+	Text     string `json:"text"`
+}
+
+// Commit is a flattened view of a Forgejo commit. The wire format nests the
+// message/author inside "commit"; the domain type keeps them flat.
+type Commit struct {
+	SHA     string `json:"sha"`
+	Message string `json:"message"`
+	Author  string `json:"author"`
+	Date    string `json:"date"`
+}
+
+// Branch is a repository branch with the SHA of the commit it points to.
+type Branch struct {
+	Name      string `json:"name"`
+	Protected bool   `json:"protected"`
+	Default   bool   `json:"default"`
+	CommitSHA string `json:"commit_sha"`
+}
+
+// PullRequest is a pull request. The wire format carries extra fields (head,
+// base, merged) that are not part of the domain shape.
+type PullRequest struct {
+	ID        int64  `json:"id"`
+	Number    int64  `json:"number"`
+	Title     string `json:"title"`
+	Body      string `json:"body"`
+	State     string `json:"state"`
+	User      User   `json:"user"`
+	HTMLURL   string `json:"html_url"`
+	CreatedAt string `json:"created_at"`
+	UpdatedAt string `json:"updated_at"`
+}
+
+// PullFile is a single file changed by a pull request.
+type PullFile struct {
+	Filename  string `json:"filename"`
+	Status    string `json:"status"`
+	Additions int64  `json:"additions"`
+	Deletions int64  `json:"deletions"`
+	Changes   int64  `json:"changes"`
+}
+
+// Check is a single status check on a commit.
+type Check struct {
+	Context     string `json:"context"`
+	State       string `json:"state"`
+	TargetURL   string `json:"target_url"`
+	Description string `json:"description"`
+}
+
+// PullRequestDetail bundles a pull request together with its changed files and
+// combined checks, so a single tool call returns the complete result (SPEC
+// 6.1 #12 / M5).
+type PullRequestDetail struct {
+	PullRequest PullRequest `json:"pull_request"`
+	Files       []PullFile  `json:"files"`
+	Checks      []Check     `json:"checks"`
+}
+
+// Release is a release of a repository.
+type Release struct {
+	ID         int64  `json:"id"`
+	TagName    string `json:"tag_name"`
+	Name       string `json:"name"`
+	Body       string `json:"body"`
+	Draft      bool   `json:"draft"`
+	Prerelease bool   `json:"prerelease"`
+	CreatedAt  string `json:"created_at"`
+}
+
+// SearchService searches the Forgejo instance for repositories.
+type SearchService interface {
+	// SearchRepos searches repositories by q/topic/sort/order and an optional
+	// private filter (nil leaves the visibility unconstrained).
+	SearchRepos(ctx context.Context, q, topic, sort, order string, private *bool) ([]Repository, error)
+}
+
+// DiffService returns unified text diffs for a compare range or a pull request.
+type DiffService interface {
+	// GetDiff returns the text diff between two refs (basehead).
+	GetDiff(ctx context.Context, owner, repo, basehead string) (Diff, error)
+	// GetPullDiff returns the text diff of a single pull request.
+	GetPullDiff(ctx context.Context, owner, repo string, index int64) (Diff, error)
+}
+
+// CommitService lists commits of a repository.
+type CommitService interface {
+	// ListCommits lists commits of a branch/ref with pagination.
+	ListCommits(ctx context.Context, owner, repo, branch string, page, limit int) ([]Commit, error)
+}
+
+// BranchService lists branches of a repository.
+type BranchService interface {
+	// ListBranches lists the branches of a repository.
+	ListBranches(ctx context.Context, owner, repo string) ([]Branch, error)
+}
+
+// IssueListService lists issues of a repository.
+type IssueListService interface {
+	// ListIssues lists issues filtered by state with pagination.
+	ListIssues(ctx context.Context, owner, repo, state string, page, limit int) ([]Issue, error)
+}
+
+// PullRequestService lists and retrieves pull requests.
+type PullRequestService interface {
+	// ListPullRequests lists pull requests filtered by state with pagination.
+	ListPullRequests(ctx context.Context, owner, repo, state string, page, limit int) ([]PullRequest, error)
+	// GetPullRequest returns a PR together with its changed files and checks.
+	GetPullRequest(ctx context.Context, owner, repo string, index int64) (PullRequestDetail, error)
+}
+
+// ReleaseService lists and retrieves releases.
+type ReleaseService interface {
+	// ListReleases lists the releases of a repository with pagination.
+	ListReleases(ctx context.Context, owner, repo string, page, limit int) ([]Release, error)
+	// GetLatestRelease returns the latest non-draft release of a repository.
+	GetLatestRelease(ctx context.Context, owner, repo string) (Release, error)
+}

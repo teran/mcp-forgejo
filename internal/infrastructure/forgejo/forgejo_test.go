@@ -367,6 +367,16 @@ func TestMethodsServerError(t *testing.T) {
 		{"ListOrganizations", func() error { _, err := c.ListOrganizations(context.Background()); return err }},
 		{"GetIssue", func() error { _, err := c.GetIssue(context.Background(), "acme", "demo", 1); return err }},
 		{"ListComments", func() error { _, err := c.ListComments(context.Background(), "acme", "demo", 1); return err }},
+		{"SearchRepos", func() error { _, err := c.SearchRepos(context.Background(), "q", "", "", "", nil); return err }},
+		{"GetDiff", func() error { _, err := c.GetDiff(context.Background(), "acme", "demo", "main..dev"); return err }},
+		{"GetPullDiff", func() error { _, err := c.GetPullDiff(context.Background(), "acme", "demo", 3); return err }},
+		{"ListCommits", func() error { _, err := c.ListCommits(context.Background(), "acme", "demo", "", 0, 0); return err }},
+		{"ListBranches", func() error { _, err := c.ListBranches(context.Background(), "acme", "demo"); return err }},
+		{"ListIssues", func() error { _, err := c.ListIssues(context.Background(), "acme", "demo", "", 0, 0); return err }},
+		{"ListPullRequests", func() error { _, err := c.ListPullRequests(context.Background(), "acme", "demo", "", 0, 0); return err }},
+		{"GetPullRequest", func() error { _, err := c.GetPullRequest(context.Background(), "acme", "demo", 5); return err }},
+		{"ListReleases", func() error { _, err := c.ListReleases(context.Background(), "acme", "demo", 0, 0); return err }},
+		{"GetLatestRelease", func() error { _, err := c.GetLatestRelease(context.Background(), "acme", "demo"); return err }},
 	}
 	for _, tc := range calls {
 		t.Run(tc.name, func(t *testing.T) {
@@ -508,6 +518,16 @@ func TestResponseBodyReadErrorIsTransient(t *testing.T) {
 		{"ListOrganizations", func() error { _, err := c.ListOrganizations(context.Background()); return err }},
 		{"GetIssue", func() error { _, err := c.GetIssue(context.Background(), "acme", "demo", 1); return err }},
 		{"ListComments", func() error { _, err := c.ListComments(context.Background(), "acme", "demo", 1); return err }},
+		{"SearchRepos", func() error { _, err := c.SearchRepos(context.Background(), "q", "", "", "", nil); return err }},
+		{"GetDiff", func() error { _, err := c.GetDiff(context.Background(), "acme", "demo", "main..dev"); return err }},
+		{"GetPullDiff", func() error { _, err := c.GetPullDiff(context.Background(), "acme", "demo", 3); return err }},
+		{"ListCommits", func() error { _, err := c.ListCommits(context.Background(), "acme", "demo", "", 0, 0); return err }},
+		{"ListBranches", func() error { _, err := c.ListBranches(context.Background(), "acme", "demo"); return err }},
+		{"ListIssues", func() error { _, err := c.ListIssues(context.Background(), "acme", "demo", "", 0, 0); return err }},
+		{"ListPullRequests", func() error { _, err := c.ListPullRequests(context.Background(), "acme", "demo", "", 0, 0); return err }},
+		{"GetPullRequest", func() error { _, err := c.GetPullRequest(context.Background(), "acme", "demo", 5); return err }},
+		{"ListReleases", func() error { _, err := c.ListReleases(context.Background(), "acme", "demo", 0, 0); return err }},
+		{"GetLatestRelease", func() error { _, err := c.GetLatestRelease(context.Background(), "acme", "demo"); return err }},
 	}
 	for _, tc := range calls {
 		t.Run(tc.name, func(t *testing.T) {
@@ -610,5 +630,322 @@ func TestGetFileWithRef(t *testing.T) {
 	}
 	if f.Content != "x" {
 		t.Errorf("content = %q", f.Content)
+	}
+}
+
+// =============================================================================
+// Batch A read tools (SPEC 6.1 #1, #6, #7, #8, #9, #11, #12, #13).
+// Test expectations for @developer: endpoints, wire JSON, and the domain types
+// they must decode/map to.
+// =============================================================================
+
+func TestSearchRepos(t *testing.T) {
+	var gotPath, gotAuth, gotQuery string
+	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotPath = r.URL.Path
+		gotAuth = r.Header.Get("Authorization")
+		gotQuery = r.URL.RawQuery
+		_, _ = w.Write([]byte(`{"ok":true,"data":[{"id":1,"name":"demo","full_name":"acme/demo","private":true,"default_branch":"master","description":"a repo"}]}`))
+	})
+	c, _ := newTestServer(t, handler)
+
+	priv := true
+	repos, err := c.SearchRepos(context.Background(), "go", "topic1", "stars", "asc", &priv)
+	if err != nil {
+		t.Fatalf("SearchRepos() error = %v", err)
+	}
+	if gotPath != "/api/v1/repos/search" {
+		t.Errorf("path = %q", gotPath)
+	}
+	if gotAuth != "token "+testToken {
+		t.Errorf("auth = %q", gotAuth)
+	}
+	for _, kv := range []string{"q=go", "topic=topic1", "sort=stars", "order=asc", "private=true"} {
+		if !strings.Contains(gotQuery, kv) {
+			t.Errorf("query = %q, want to contain %q", gotQuery, kv)
+		}
+	}
+	if len(repos) != 1 || repos[0].Name != "demo" || repos[0].FullName != "acme/demo" || !repos[0].Private {
+		t.Errorf("unexpected repos: %+v", repos)
+	}
+}
+
+func TestSearchReposOmitsPrivateWhenNil(t *testing.T) {
+	var gotQuery string
+	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotQuery = r.URL.RawQuery
+		_, _ = w.Write([]byte(`{"ok":true,"data":[]}`))
+	})
+	c, _ := newTestServer(t, handler)
+	if _, err := c.SearchRepos(context.Background(), "go", "", "", "", nil); err != nil {
+		t.Fatalf("SearchRepos() error = %v", err)
+	}
+	if strings.Contains(gotQuery, "private=") {
+		t.Errorf("query = %q, want no private param when nil", gotQuery)
+	}
+}
+
+func TestGetDiff(t *testing.T) {
+	var gotPath, gotQuery string
+	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotPath = r.URL.Path
+		gotQuery = r.URL.RawQuery
+		w.Header().Set("Content-Type", "text/plain")
+		_, _ = w.Write([]byte("@@ -1,3 +1,3 @@\n-old\n+new\n"))
+	})
+	c, _ := newTestServer(t, handler)
+	diff, err := c.GetDiff(context.Background(), "acme", "demo", "main..dev")
+	if err != nil {
+		t.Fatalf("GetDiff() error = %v", err)
+	}
+	if gotPath != "/api/v1/repos/acme/demo/compare/main..dev" {
+		t.Errorf("path = %q", gotPath)
+	}
+	if gotQuery != "" {
+		t.Errorf("query = %q, want empty", gotQuery)
+	}
+	if !strings.Contains(diff.Text, "+new") {
+		t.Errorf("diff.Text = %q, want to contain the diff body", diff.Text)
+	}
+	if diff.BaseHead != "main..dev" {
+		t.Errorf("BaseHead = %q, want main..dev", diff.BaseHead)
+	}
+}
+
+func TestGetPullDiff(t *testing.T) {
+	var gotPath string
+	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotPath = r.URL.Path
+		w.Header().Set("Content-Type", "text/plain")
+		_, _ = w.Write([]byte("diff for pr 3"))
+	})
+	c, _ := newTestServer(t, handler)
+	diff, err := c.GetPullDiff(context.Background(), "acme", "demo", 3)
+	if err != nil {
+		t.Fatalf("GetPullDiff() error = %v", err)
+	}
+	if gotPath != "/api/v1/repos/acme/demo/pulls/3.diff" {
+		t.Errorf("path = %q", gotPath)
+	}
+	if diff.Text != "diff for pr 3" {
+		t.Errorf("diff.Text = %q", diff.Text)
+	}
+}
+
+func TestListCommits(t *testing.T) {
+	var gotPath, gotQuery string
+	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotPath = r.URL.Path
+		gotQuery = r.URL.RawQuery
+		_, _ = w.Write([]byte(`[{"sha":"abc","commit":{"message":"fix build","author":{"name":"Alice","date":"2024-01-01T00:00:00Z"}},"html_url":"https://x/abc"}]`))
+	})
+	c, _ := newTestServer(t, handler)
+	commits, err := c.ListCommits(context.Background(), "acme", "demo", "main", 2, 25)
+	if err != nil {
+		t.Fatalf("ListCommits() error = %v", err)
+	}
+	if gotPath != "/api/v1/repos/acme/demo/commits" {
+		t.Errorf("path = %q", gotPath)
+	}
+	for _, kv := range []string{"sha=main", "page=2", "limit=25"} {
+		if !strings.Contains(gotQuery, kv) {
+			t.Errorf("query = %q, want to contain %q", gotQuery, kv)
+		}
+	}
+	if len(commits) != 1 || commits[0].SHA != "abc" || commits[0].Message != "fix build" || commits[0].Author != "Alice" {
+		t.Errorf("unexpected commits: %+v", commits)
+	}
+}
+
+func TestListCommitsOmitsBranchWhenEmpty(t *testing.T) {
+	var gotQuery string
+	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotQuery = r.URL.RawQuery
+		_, _ = w.Write([]byte(`[]`))
+	})
+	c, _ := newTestServer(t, handler)
+	if _, err := c.ListCommits(context.Background(), "acme", "demo", "", 0, 0); err != nil {
+		t.Fatalf("ListCommits() error = %v", err)
+	}
+	if gotQuery != "" {
+		t.Errorf("query = %q, want empty when branch empty", gotQuery)
+	}
+}
+
+func TestListBranches(t *testing.T) {
+	var gotPath string
+	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotPath = r.URL.Path
+		_, _ = w.Write([]byte(`[{"name":"main","protected":true,"default":true,"commit":{"id":"c1"}},{"name":"dev","protected":false,"default":false,"commit":{"id":"c2"}}]`))
+	})
+	c, _ := newTestServer(t, handler)
+	branches, err := c.ListBranches(context.Background(), "acme", "demo")
+	if err != nil {
+		t.Fatalf("ListBranches() error = %v", err)
+	}
+	if gotPath != "/api/v1/repos/acme/demo/branches" {
+		t.Errorf("path = %q", gotPath)
+	}
+	if len(branches) != 2 {
+		t.Fatalf("expected 2 branches, got %+v", branches)
+	}
+	if branches[0].Name != "main" || !branches[0].Protected || !branches[0].Default || branches[0].CommitSHA != "c1" {
+		t.Errorf("unexpected branch[0]: %+v", branches[0])
+	}
+	if branches[1].Name != "dev" || branches[1].Protected || branches[1].Default {
+		t.Errorf("unexpected branch[1]: %+v", branches[1])
+	}
+}
+
+func TestListIssues(t *testing.T) {
+	var gotPath, gotQuery string
+	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotPath = r.URL.Path
+		gotQuery = r.URL.RawQuery
+		_, _ = w.Write([]byte(`[{"id":1,"number":3,"title":"Issue","body":"b","state":"closed"}]`))
+	})
+	c, _ := newTestServer(t, handler)
+	issues, err := c.ListIssues(context.Background(), "acme", "demo", "closed", 2, 10)
+	if err != nil {
+		t.Fatalf("ListIssues() error = %v", err)
+	}
+	if gotPath != "/api/v1/repos/acme/demo/issues" {
+		t.Errorf("path = %q", gotPath)
+	}
+	for _, kv := range []string{"state=closed", "page=2", "limit=10"} {
+		if !strings.Contains(gotQuery, kv) {
+			t.Errorf("query = %q, want to contain %q", gotQuery, kv)
+		}
+	}
+	if len(issues) != 1 || issues[0].Number != 3 || issues[0].State != "closed" {
+		t.Errorf("unexpected issues: %+v", issues)
+	}
+}
+
+func TestListPullRequests(t *testing.T) {
+	var gotPath, gotQuery string
+	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotPath = r.URL.Path
+		gotQuery = r.URL.RawQuery
+		_, _ = w.Write([]byte(`[{"id":1,"number":5,"title":"PR","state":"open"}]`))
+	})
+	c, _ := newTestServer(t, handler)
+	prs, err := c.ListPullRequests(context.Background(), "acme", "demo", "open", 1, 30)
+	if err != nil {
+		t.Fatalf("ListPullRequests() error = %v", err)
+	}
+	if gotPath != "/api/v1/repos/acme/demo/pulls" {
+		t.Errorf("path = %q", gotPath)
+	}
+	for _, kv := range []string{"state=open", "page=1", "limit=30"} {
+		if !strings.Contains(gotQuery, kv) {
+			t.Errorf("query = %q, want to contain %q", gotQuery, kv)
+		}
+	}
+	if len(prs) != 1 || prs[0].Number != 5 || prs[0].Title != "PR" || prs[0].State != "open" {
+		t.Errorf("unexpected prs: %+v", prs)
+	}
+}
+
+// TestGetPullRequest verifies the single-call composition (SPEC 6.1 #12 / M5):
+// one tool call must fetch the PR, its changed files AND its combined checks.
+func TestGetPullRequest(t *testing.T) {
+	var paths []string
+	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		paths = append(paths, r.URL.Path)
+		switch {
+		case strings.HasSuffix(r.URL.Path, "/files"):
+			_, _ = w.Write([]byte(`[{"filename":"a.go","status":"modified","additions":1,"deletions":1,"changes":2}]`))
+		case strings.HasSuffix(r.URL.Path, "/status"):
+			_, _ = w.Write([]byte(`{"state":"success","statuses":[{"context":"ci","state":"success","target_url":"https://ci/x","description":"ok"}]}`))
+		default:
+			_, _ = w.Write([]byte(`{"id":1,"number":5,"title":"PR5","state":"open","head":{"sha":"headsha"}}`))
+		}
+	})
+	c, _ := newTestServer(t, handler)
+
+	detail, err := c.GetPullRequest(context.Background(), "acme", "demo", 5)
+	if err != nil {
+		t.Fatalf("GetPullRequest() error = %v", err)
+	}
+	if detail.PullRequest.Number != 5 || detail.PullRequest.Title != "PR5" {
+		t.Errorf("unexpected PR: %+v", detail.PullRequest)
+	}
+	if len(detail.Files) != 1 || detail.Files[0].Filename != "a.go" || detail.Files[0].Status != "modified" {
+		t.Errorf("unexpected files: %+v", detail.Files)
+	}
+	if len(detail.Checks) != 1 || detail.Checks[0].Context != "ci" || detail.Checks[0].State != "success" {
+		t.Errorf("unexpected checks: %+v", detail.Checks)
+	}
+	if len(paths) != 3 {
+		t.Errorf("expected 3 HTTP calls, got %d: %v", len(paths), paths)
+	}
+	if paths[0] != "/api/v1/repos/acme/demo/pulls/5" {
+		t.Errorf("PR path = %q", paths[0])
+	}
+	if paths[1] != "/api/v1/repos/acme/demo/pulls/5/files" {
+		t.Errorf("files path = %q", paths[1])
+	}
+	if paths[2] != "/api/v1/repos/acme/demo/commits/headsha/status" {
+		t.Errorf("status path = %q", paths[2])
+	}
+}
+
+func TestListReleases(t *testing.T) {
+	var gotPath, gotQuery string
+	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotPath = r.URL.Path
+		gotQuery = r.URL.RawQuery
+		_, _ = w.Write([]byte(`[{"id":1,"tag_name":"v1","name":"V1","body":"notes","draft":false,"prerelease":false,"created_at":"2024-01-01"}]`))
+	})
+	c, _ := newTestServer(t, handler)
+	releases, err := c.ListReleases(context.Background(), "acme", "demo", 1, 20)
+	if err != nil {
+		t.Fatalf("ListReleases() error = %v", err)
+	}
+	if gotPath != "/api/v1/repos/acme/demo/releases" {
+		t.Errorf("path = %q", gotPath)
+	}
+	for _, kv := range []string{"page=1", "limit=20"} {
+		if !strings.Contains(gotQuery, kv) {
+			t.Errorf("query = %q, want to contain %q", gotQuery, kv)
+		}
+	}
+	if len(releases) != 1 || releases[0].TagName != "v1" || releases[0].Name != "V1" {
+		t.Errorf("unexpected releases: %+v", releases)
+	}
+}
+
+func TestGetLatestRelease(t *testing.T) {
+	var gotPath string
+	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotPath = r.URL.Path
+		_, _ = w.Write([]byte(`{"id":2,"tag_name":"v2","name":"V2","body":"latest","draft":false,"prerelease":false}`))
+	})
+	c, _ := newTestServer(t, handler)
+	rel, err := c.GetLatestRelease(context.Background(), "acme", "demo")
+	if err != nil {
+		t.Fatalf("GetLatestRelease() error = %v", err)
+	}
+	if gotPath != "/api/v1/repos/acme/demo/releases/latest" {
+		t.Errorf("path = %q", gotPath)
+	}
+	if rel.TagName != "v2" || rel.Name != "V2" {
+		t.Errorf("unexpected release: %+v", rel)
+	}
+}
+
+func TestSearchReposErrorIsNotFound(t *testing.T) {
+	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusNotFound)
+	})
+	c, _ := newTestServer(t, handler)
+	_, err := c.SearchRepos(context.Background(), "q", "", "", "", nil)
+	if err == nil {
+		t.Fatal("expected error for 404")
+	}
+	fe, ok := err.(*domain.ForgejoError)
+	if !ok || fe.Kind != domain.KindNotFound {
+		t.Errorf("expected not-found, got %v", err)
 	}
 }

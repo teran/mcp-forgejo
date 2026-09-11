@@ -20,7 +20,20 @@ const testToken = "srv-secret-pat"
 // mockForgejo returns a handler serving canned Forgejo responses keyed by path.
 func mockForgejo() http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		switch r.URL.Path {
+		p := r.URL.Path
+		// Dynamic (prefix-matched) Batch A routes.
+		switch {
+		case strings.HasPrefix(p, "/api/v1/repos/acme/demo/compare/"):
+			_, _ = w.Write([]byte("@@ -1,3 +1,3 @@\n-old\n+new\n"))
+			return
+		case strings.HasPrefix(p, "/api/v1/repos/acme/demo/pulls/5/files"):
+			_, _ = w.Write([]byte(`[{"filename":"a.go","status":"modified","additions":1,"deletions":1,"changes":2}]`))
+			return
+		case strings.HasPrefix(p, "/api/v1/repos/acme/demo/commits/headsha/status"):
+			_, _ = w.Write([]byte(`{"state":"success","statuses":[{"context":"ci","state":"success","target_url":"https://ci/x","description":"ok"}]}`))
+			return
+		}
+		switch p {
 		case "/api/v1/repos/acme/demo":
 			_, _ = w.Write([]byte(`{"id":7,"name":"demo","full_name":"acme/demo","private":true,"default_branch":"master","description":"a repo"}`))
 		case "/api/v1/repos/acme/demo/contents":
@@ -37,6 +50,22 @@ func mockForgejo() http.Handler {
 		case "/api/v1/repos/ghost/missing":
 			w.WriteHeader(http.StatusNotFound)
 			_, _ = w.Write([]byte(`{"message":"not found"}`))
+		case "/api/v1/repos/search":
+			_, _ = w.Write([]byte(`{"ok":true,"data":[{"id":1,"name":"demo","full_name":"acme/demo","private":true,"default_branch":"master","description":"found"}]}`))
+		case "/api/v1/repos/acme/demo/commits":
+			_, _ = w.Write([]byte(`[{"sha":"abc","commit":{"message":"fix build","author":{"name":"Alice","date":"2024-01-01T00:00:00Z"}},"html_url":"https://x/abc"}]`))
+		case "/api/v1/repos/acme/demo/branches":
+			_, _ = w.Write([]byte(`[{"name":"main","protected":true,"default":true,"commit":{"id":"c1"}}]`))
+		case "/api/v1/repos/acme/demo/issues":
+			_, _ = w.Write([]byte(`[{"id":1,"number":3,"title":"Issue three","body":"b","state":"open"}]`))
+		case "/api/v1/repos/acme/demo/pulls":
+			_, _ = w.Write([]byte(`[{"id":1,"number":5,"title":"PR five","state":"open"}]`))
+		case "/api/v1/repos/acme/demo/pulls/5":
+			_, _ = w.Write([]byte(`{"id":1,"number":5,"title":"PR five","state":"open","head":{"sha":"headsha"}}`))
+		case "/api/v1/repos/acme/demo/releases":
+			_, _ = w.Write([]byte(`[{"id":1,"tag_name":"v1","name":"V1","body":"notes","draft":false,"prerelease":false,"created_at":"2024-01-01"}]`))
+		case "/api/v1/repos/acme/demo/releases/latest":
+			_, _ = w.Write([]byte(`{"id":2,"tag_name":"v2","name":"V2","body":"latest","draft":false,"prerelease":false,"created_at":"2024-02-01"}`))
 		default:
 			w.WriteHeader(http.StatusNotFound)
 			_, _ = w.Write([]byte(`{"message":"unexpected path "` + r.URL.Path + `"}`))
@@ -116,7 +145,11 @@ func TestListTools(t *testing.T) {
 	for _, tool := range res.Tools {
 		names[tool.Name] = true
 	}
-	want := []string{"forgejo_repo_get", "forgejo_repo_list_contents", "forgejo_file_get", "forgejo_org_list", "forgejo_issue_get"}
+	want := []string{
+		"forgejo_repo_get", "forgejo_repo_list_contents", "forgejo_file_get", "forgejo_org_list", "forgejo_issue_get",
+		"forgejo_repo_search", "forgejo_diff_get", "forgejo_commit_list", "forgejo_branch_list",
+		"forgejo_issue_list", "forgejo_pull_list", "forgejo_pull_get", "forgejo_release_list",
+	}
 	for _, n := range want {
 		if !names[n] {
 			t.Errorf("tool %q not registered", n)
@@ -134,7 +167,11 @@ func TestReadToolsAnnotations(t *testing.T) {
 	for _, tool := range res.Tools {
 		byName[tool.Name] = tool
 	}
-	readTools := []string{"forgejo_repo_get", "forgejo_repo_list_contents", "forgejo_file_get", "forgejo_org_list", "forgejo_issue_get"}
+	readTools := []string{
+		"forgejo_repo_get", "forgejo_repo_list_contents", "forgejo_file_get", "forgejo_org_list", "forgejo_issue_get",
+		"forgejo_repo_search", "forgejo_diff_get", "forgejo_commit_list", "forgejo_branch_list",
+		"forgejo_issue_list", "forgejo_pull_list", "forgejo_pull_get", "forgejo_release_list",
+	}
 	for _, n := range readTools {
 		tool, ok := byName[n]
 		if !ok {
@@ -209,6 +246,93 @@ func TestIssueGetTool(t *testing.T) {
 	}
 	if len(got.Comments) != 1 || got.Comments[0].Body != "first comment" {
 		t.Errorf("comments = %+v", got.Comments)
+	}
+}
+
+func TestRepoSearchTool(t *testing.T) {
+	cs, _ := setup(t)
+	var repos []domain.Repository
+	callTool(t, cs, "forgejo_repo_search", map[string]any{"q": "go", "private": true}, &repos)
+	if len(repos) != 1 || repos[0].Name != "demo" || repos[0].FullName != "acme/demo" || !repos[0].Private {
+		t.Errorf("repos = %+v", repos)
+	}
+}
+
+func TestDiffGetTool(t *testing.T) {
+	cs, _ := setup(t)
+	var diff domain.Diff
+	callTool(t, cs, "forgejo_diff_get", map[string]any{"owner": "acme", "repo": "demo", "basehead": "main..dev"}, &diff)
+	if !strings.Contains(diff.Text, "+new") {
+		t.Errorf("diff = %+v", diff)
+	}
+}
+
+func TestCommitListTool(t *testing.T) {
+	cs, _ := setup(t)
+	var commits []domain.Commit
+	callTool(t, cs, "forgejo_commit_list", map[string]any{"owner": "acme", "repo": "demo", "branch": "main"}, &commits)
+	if len(commits) != 1 || commits[0].SHA != "abc" || commits[0].Message != "fix build" || commits[0].Author != "Alice" {
+		t.Errorf("commits = %+v", commits)
+	}
+}
+
+func TestBranchListTool(t *testing.T) {
+	cs, _ := setup(t)
+	var branches []domain.Branch
+	callTool(t, cs, "forgejo_branch_list", map[string]any{"owner": "acme", "repo": "demo"}, &branches)
+	if len(branches) != 1 || branches[0].Name != "main" || !branches[0].Protected || branches[0].CommitSHA != "c1" {
+		t.Errorf("branches = %+v", branches)
+	}
+}
+
+func TestIssueListTool(t *testing.T) {
+	cs, _ := setup(t)
+	var issues []domain.Issue
+	callTool(t, cs, "forgejo_issue_list", map[string]any{"owner": "acme", "repo": "demo", "state": "open"}, &issues)
+	if len(issues) != 1 || issues[0].Number != 3 || issues[0].Title != "Issue three" || issues[0].State != "open" {
+		t.Errorf("issues = %+v", issues)
+	}
+}
+
+func TestPullListTool(t *testing.T) {
+	cs, _ := setup(t)
+	var prs []domain.PullRequest
+	callTool(t, cs, "forgejo_pull_list", map[string]any{"owner": "acme", "repo": "demo", "state": "open"}, &prs)
+	if len(prs) != 1 || prs[0].Number != 5 || prs[0].Title != "PR five" || prs[0].State != "open" {
+		t.Errorf("prs = %+v", prs)
+	}
+}
+
+func TestPullGetTool(t *testing.T) {
+	cs, _ := setup(t)
+	var detail domain.PullRequestDetail
+	callTool(t, cs, "forgejo_pull_get", map[string]any{"owner": "acme", "repo": "demo", "number": 5}, &detail)
+	if detail.PullRequest.Number != 5 || detail.PullRequest.Title != "PR five" {
+		t.Errorf("pr = %+v", detail.PullRequest)
+	}
+	if len(detail.Files) != 1 || detail.Files[0].Filename != "a.go" || detail.Files[0].Status != "modified" {
+		t.Errorf("files = %+v", detail.Files)
+	}
+	if len(detail.Checks) != 1 || detail.Checks[0].Context != "ci" || detail.Checks[0].State != "success" {
+		t.Errorf("checks = %+v", detail.Checks)
+	}
+}
+
+func TestReleaseListTool(t *testing.T) {
+	cs, _ := setup(t)
+	var releases []domain.Release
+	callTool(t, cs, "forgejo_release_list", map[string]any{"owner": "acme", "repo": "demo"}, &releases)
+	if len(releases) != 1 || releases[0].TagName != "v1" || releases[0].Name != "V1" {
+		t.Errorf("releases = %+v", releases)
+	}
+}
+
+func TestReleaseListLatestTool(t *testing.T) {
+	cs, _ := setup(t)
+	var releases []domain.Release
+	callTool(t, cs, "forgejo_release_list", map[string]any{"owner": "acme", "repo": "demo", "latest": true}, &releases)
+	if len(releases) != 1 || releases[0].TagName != "v2" || releases[0].Name != "V2" {
+		t.Errorf("releases = %+v", releases)
 	}
 }
 
