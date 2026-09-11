@@ -313,3 +313,204 @@ type ReleaseService interface {
 	// GetLatestRelease returns the latest non-draft release of a repository.
 	GetLatestRelease(ctx context.Context, owner, repo string) (Release, error)
 }
+
+// CreateRepositoryInput carries the fields needed to create a repository.
+// An empty Owner creates under the current authenticated user; a non-empty
+// Owner creates under that organization.
+type CreateRepositoryInput struct {
+	Owner    string `json:"owner"`
+	Name     string `json:"name"`
+	Private  bool   `json:"private"`
+	AutoInit bool   `json:"auto_init"`
+}
+
+// RepositoryWriteService creates repositories.
+type RepositoryWriteService interface {
+	// CreateRepository creates a new repository.
+	CreateRepository(ctx context.Context, in CreateRepositoryInput) (Repository, error)
+}
+
+// WriteFileInput carries the fields of a single-file write that either
+// creates the file (if absent) or updates it (if present).
+type WriteFileInput struct {
+	Owner   string `json:"owner"`
+	Repo    string `json:"repo"`
+	Path    string `json:"path"`
+	Branch  string `json:"branch"`
+	Message string `json:"message"`
+	Content string `json:"content"`
+}
+
+// CreateFileInput is the wire contract for creating a new file.
+type CreateFileInput struct {
+	Owner   string `json:"owner"`
+	Repo    string `json:"repo"`
+	Path    string `json:"path"`
+	Branch  string `json:"branch"`
+	Message string `json:"message"`
+	Content string `json:"content"`
+}
+
+// UpdateFileInput is the wire contract for updating an existing file. SHA must
+// be the blob SHA of the current version so the update is conflict-checked.
+type UpdateFileInput struct {
+	Owner   string `json:"owner"`
+	Repo    string `json:"repo"`
+	Path    string `json:"path"`
+	Branch  string `json:"branch"`
+	Message string `json:"message"`
+	SHA     string `json:"sha"`
+	Content string `json:"content"`
+}
+
+// FileResult is the outcome of a create/update file operation.
+type FileResult struct {
+	Path      string `json:"path"`
+	SHA       string `json:"sha"`
+	Content   string `json:"content"`
+	CommitSHA string `json:"commit_sha"`
+}
+
+// ChangeFileEntry describes a single file operation within a multi-file commit.
+type ChangeFileEntry struct {
+	Path      string `json:"path"`
+	Content   string `json:"content"`
+	Operation string `json:"operation"`
+}
+
+// ChangeFilesInput carries the fields of a multi-file (single-commit) write.
+type ChangeFilesInput struct {
+	Owner   string            `json:"owner"`
+	Repo    string            `json:"repo"`
+	Branch  string            `json:"branch"`
+	Message string            `json:"message"`
+	Files   []ChangeFileEntry `json:"files"`
+}
+
+// ChangeFileResult is a single file's outcome in a multi-file write.
+type ChangeFileResult struct {
+	Path   string `json:"path"`
+	SHA    string `json:"sha"`
+	Status string `json:"status"`
+}
+
+// ChangeFilesResult is the outcome of a multi-file write.
+type ChangeFilesResult struct {
+	CommitSHA string             `json:"commit_sha"`
+	Files     []ChangeFileResult `json:"files"`
+}
+
+// FileWriteOrchestrator writes files to a repository. It is the write-side
+// counterpart of RepositoryService: it probes an existing file and dispatches
+// to create or update.
+type FileWriteOrchestrator interface {
+	// GetFile returns the content of a single file at path+ref.
+	GetFile(ctx context.Context, owner, repo, path, ref string) (File, error)
+	// CreateFile creates a new file.
+	CreateFile(ctx context.Context, in CreateFileInput) (FileResult, error)
+	// UpdateFile updates an existing file.
+	UpdateFile(ctx context.Context, in UpdateFileInput) (FileResult, error)
+	// ChangeFiles applies multiple file operations in one commit.
+	ChangeFiles(ctx context.Context, in ChangeFilesInput) (ChangeFilesResult, error)
+}
+
+// BranchWriteService creates branches.
+type BranchWriteService interface {
+	// CreateBranch creates a new branch from an existing ref.
+	CreateBranch(ctx context.Context, owner, repo, newBranch, oldRef string) (Branch, error)
+}
+
+// CreateIssueInput carries the fields needed to create an issue.
+type CreateIssueInput struct {
+	Owner     string  `json:"owner"`
+	Repo      string  `json:"repo"`
+	Title     string  `json:"title"`
+	Body      string  `json:"body"`
+	Labels    []int64 `json:"labels"`
+	Milestone int64   `json:"milestone"`
+}
+
+// UpdateIssueInput carries the fields needed to edit/close/reopen an issue.
+type UpdateIssueInput struct {
+	Owner string `json:"owner"`
+	Repo  string `json:"repo"`
+	Index int64  `json:"index"`
+	Title string `json:"title"`
+	Body  string `json:"body"`
+	State string `json:"state"`
+}
+
+// IssueWriteService creates, updates and comments on issues.
+type IssueWriteService interface {
+	// CreateIssue creates a new issue.
+	CreateIssue(ctx context.Context, in CreateIssueInput) (Issue, error)
+	// UpdateIssue edits an existing issue (title/body/state).
+	UpdateIssue(ctx context.Context, in UpdateIssueInput) (Issue, error)
+	// CreateIssueComment appends a comment to an issue.
+	CreateIssueComment(ctx context.Context, owner, repo string, index int64, body string) (Comment, error)
+}
+
+// CreatePullRequestInput carries the fields needed to open a pull request.
+type CreatePullRequestInput struct {
+	Owner string `json:"owner"`
+	Repo  string `json:"repo"`
+	Title string `json:"title"`
+	Body  string `json:"body"`
+	Head  string `json:"head"`
+	Base  string `json:"base"`
+}
+
+// UpdatePullRequestInput carries the fields needed to edit/close/reopen a PR.
+type UpdatePullRequestInput struct {
+	Owner string `json:"owner"`
+	Repo  string `json:"repo"`
+	Index int64  `json:"index"`
+	Title string `json:"title"`
+	Body  string `json:"body"`
+	State string `json:"state"`
+}
+
+// Review is a pull request review.
+type Review struct {
+	ID    int64  `json:"id"`
+	Body  string `json:"body"`
+	State string `json:"state"`
+}
+
+// PullMergeResult reports the outcome of a merge request, distinguishing a
+// fresh merge from a pull request that was already merged.
+type PullMergeResult struct {
+	Merged        bool `json:"merged"`
+	AlreadyMerged bool `json:"already_merged"`
+}
+
+// PullRequestWriteService creates, updates, merges and reviews pull requests.
+type PullRequestWriteService interface {
+	// CreatePullRequest opens a new pull request.
+	CreatePullRequest(ctx context.Context, in CreatePullRequestInput) (PullRequest, error)
+	// UpdatePullRequest edits an existing pull request (title/body/state).
+	UpdatePullRequest(ctx context.Context, in UpdatePullRequestInput) (PullRequest, error)
+	// IsPullRequestMerged reports whether a pull request has been merged.
+	IsPullRequestMerged(ctx context.Context, owner, repo string, index int64) (bool, error)
+	// MergePullRequest merges a pull request with the given method.
+	MergePullRequest(ctx context.Context, owner, repo string, index int64, method string) error
+	// CreatePullReview creates a pending pull request review.
+	CreatePullReview(ctx context.Context, owner, repo string, index int64, body string) (Review, error)
+	// SubmitPullReview submits an existing review with a final event.
+	SubmitPullReview(ctx context.Context, owner, repo string, index int64, reviewID int64, event string) (Review, error)
+}
+
+// CreateReleaseInput carries the fields needed to create a release.
+type CreateReleaseInput struct {
+	Owner string `json:"owner"`
+	Repo  string `json:"repo"`
+	Tag   string `json:"tag"`
+	Name  string `json:"name"`
+	Notes string `json:"notes"`
+}
+
+// ReleaseWriteService creates releases.
+type ReleaseWriteService interface {
+	// CreateRelease creates a release for an existing tag.
+	CreateRelease(ctx context.Context, in CreateReleaseInput) (Release, error)
+}

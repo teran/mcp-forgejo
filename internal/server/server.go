@@ -36,6 +36,7 @@ func registerTools(s *mcp.Server, client *forgejo.Client) {
 	registerOrgTools(s, client)
 	registerIssueTools(s, client)
 	registerBatchAReadTools(s, client)
+	registerWriteTools(s, client)
 }
 
 // readAnnotations builds the annotation set for read-only tools (SPEC 6.0).
@@ -47,6 +48,23 @@ func readAnnotations(title string) *mcp.ToolAnnotations {
 		ReadOnlyHint:    true,
 		DestructiveHint: &destructive,
 		IdempotentHint:  true,
+		OpenWorldHint:   &openWorld,
+	}
+}
+
+// writeAnnotations builds the annotation set for write/update tools
+// (SPEC 6.0 / 6.2): readOnlyHint=false, destructiveHint=false,
+// openWorldHint=false. idempotentHint is true only for tools whose repeated
+// invocation with identical args has no extra effect (issue_update,
+// pull_update).
+func writeAnnotations(title string, idempotent bool) *mcp.ToolAnnotations {
+	destructive := false
+	openWorld := false
+	return &mcp.ToolAnnotations{
+		Title:           title,
+		ReadOnlyHint:    false,
+		DestructiveHint: &destructive,
+		IdempotentHint:  idempotent,
 		OpenWorldHint:   &openWorld,
 	}
 }
@@ -283,4 +301,251 @@ type releaseListIn struct {
 	Latest bool   `json:"latest,omitempty" jsonschema:"Fetch only the latest release"`
 	Page   int    `json:"page,omitempty" jsonschema:"Page number (1-based); omitted when 0"`
 	Limit  int    `json:"limit,omitempty" jsonschema:"Maximum number of releases per page; omitted when 0"`
+}
+
+// registerWriteTools registers the Batch B write/update tools (SPEC 6.2
+// #14–#25). They are grouped read -> write -> delete (S3).
+func registerWriteTools(s *mcp.Server, client *forgejo.Client) {
+	mcp.AddTool(s, &mcp.Tool{
+		Name:        "forgejo_repo_create",
+		Title:       "Create repository",
+		Description: "Create a repository (optionally under an organization). Creating a name that already exists conflicts; not idempotent.",
+		Annotations: writeAnnotations("Create repository", false),
+	}, func(ctx context.Context, _ *mcp.CallToolRequest, in repoCreateIn) (*mcp.CallToolResult, domain.Repository, error) {
+		repo, err := application.CreateRepository(ctx, client, domain.CreateRepositoryInput{
+			Owner: in.Owner, Name: in.Name, Private: in.Private, AutoInit: in.AutoInit,
+		})
+		return nil, repo, err
+	})
+
+	mcp.AddTool(s, &mcp.Tool{
+		Name:        "forgejo_file_write",
+		Title:       "Write/update file",
+		Description: "Write text content to a file at path+branch in a single commit. Creates the file when absent, updates it when present. Not idempotent: every call records a new commit.",
+		Annotations: writeAnnotations("Write/update file", false),
+	}, func(ctx context.Context, _ *mcp.CallToolRequest, in fileWriteIn) (*mcp.CallToolResult, domain.FileResult, error) {
+		res, err := application.WriteFile(ctx, client, domain.WriteFileInput{
+			Owner: in.Owner, Repo: in.Repo, Path: in.Path, Branch: in.Branch, Message: in.Message, Content: in.Content,
+		})
+		return nil, res, err
+	})
+
+	mcp.AddTool(s, &mcp.Tool{
+		Name:        "forgejo_file_write_many",
+		Title:       "Write multiple files",
+		Description: "Create/update/delete several files in one commit at a branch with a commit message.",
+		Annotations: writeAnnotations("Write multiple files", false),
+	}, func(ctx context.Context, _ *mcp.CallToolRequest, in fileWriteManyIn) (*mcp.CallToolResult, domain.ChangeFilesResult, error) {
+		files := make([]domain.ChangeFileEntry, 0, len(in.Files))
+		for _, f := range in.Files {
+			files = append(files, domain.ChangeFileEntry{Path: f.Path, Content: f.Content, Operation: f.Operation})
+		}
+		res, err := application.WriteManyFiles(ctx, client, domain.ChangeFilesInput{
+			Owner: in.Owner, Repo: in.Repo, Branch: in.Branch, Message: in.Message, Files: files,
+		})
+		return nil, res, err
+	})
+
+	mcp.AddTool(s, &mcp.Tool{
+		Name:        "forgejo_branch_create",
+		Title:       "Create branch",
+		Description: "Create a branch from an existing ref. Creating an existing branch conflicts; not idempotent.",
+		Annotations: writeAnnotations("Create branch", false),
+	}, func(ctx context.Context, _ *mcp.CallToolRequest, in branchCreateIn) (*mcp.CallToolResult, domain.Branch, error) {
+		branch, err := application.CreateBranch(ctx, client, in.Owner, in.Repo, in.NewBranch, in.OldRef)
+		return nil, branch, err
+	})
+
+	mcp.AddTool(s, &mcp.Tool{
+		Name:        "forgejo_issue_create",
+		Title:       "Create issue",
+		Description: "Create an issue with a title, body, labels and milestone.",
+		Annotations: writeAnnotations("Create issue", false),
+	}, func(ctx context.Context, _ *mcp.CallToolRequest, in issueCreateIn) (*mcp.CallToolResult, domain.Issue, error) {
+		issue, err := application.CreateIssue(ctx, client, domain.CreateIssueInput{
+			Owner: in.Owner, Repo: in.Repo, Title: in.Title, Body: in.Body, Labels: in.Labels, Milestone: in.Milestone,
+		})
+		return nil, issue, err
+	})
+
+	mcp.AddTool(s, &mcp.Tool{
+		Name:        "forgejo_issue_update",
+		Title:       "Update/close/reopen issue",
+		Description: "Edit an existing issue's title/body or set its state to open/closed. Repeating the same edit is idempotent.",
+		Annotations: writeAnnotations("Update/close/reopen issue", true),
+	}, func(ctx context.Context, _ *mcp.CallToolRequest, in issueUpdateIn) (*mcp.CallToolResult, domain.Issue, error) {
+		issue, err := application.UpdateIssue(ctx, client, domain.UpdateIssueInput{
+			Owner: in.Owner, Repo: in.Repo, Index: in.Index, Title: in.Title, Body: in.Body, State: in.State,
+		})
+		return nil, issue, err
+	})
+
+	mcp.AddTool(s, &mcp.Tool{
+		Name:        "forgejo_issue_comment_add",
+		Title:       "Add issue comment",
+		Description: "Append a comment to an issue. Each call adds a new comment; not idempotent.",
+		Annotations: writeAnnotations("Add issue comment", false),
+	}, func(ctx context.Context, _ *mcp.CallToolRequest, in issueCommentAddIn) (*mcp.CallToolResult, domain.Comment, error) {
+		comment, err := application.AddIssueComment(ctx, client, in.Owner, in.Repo, in.Index, in.Body)
+		return nil, comment, err
+	})
+
+	mcp.AddTool(s, &mcp.Tool{
+		Name:        "forgejo_pull_create",
+		Title:       "Create pull request",
+		Description: "Open a pull request from a head branch to a base branch with a title/body.",
+		Annotations: writeAnnotations("Create pull request", false),
+	}, func(ctx context.Context, _ *mcp.CallToolRequest, in pullCreateIn) (*mcp.CallToolResult, domain.PullRequest, error) {
+		pr, err := application.CreatePullRequest(ctx, client, domain.CreatePullRequestInput{
+			Owner: in.Owner, Repo: in.Repo, Title: in.Title, Body: in.Body, Head: in.Head, Base: in.Base,
+		})
+		return nil, pr, err
+	})
+
+	mcp.AddTool(s, &mcp.Tool{
+		Name:        "forgejo_pull_update",
+		Title:       "Update/close/reopen pull request",
+		Description: "Edit an existing pull request's title/body or set its state to open/closed. Repeating the same edit is idempotent.",
+		Annotations: writeAnnotations("Update/close/reopen pull request", true),
+	}, func(ctx context.Context, _ *mcp.CallToolRequest, in pullUpdateIn) (*mcp.CallToolResult, domain.PullRequest, error) {
+		pr, err := application.UpdatePullRequest(ctx, client, domain.UpdatePullRequestInput{
+			Owner: in.Owner, Repo: in.Repo, Index: in.Index, Title: in.Title, Body: in.Body, State: in.State,
+		})
+		return nil, pr, err
+	})
+
+	mcp.AddTool(s, &mcp.Tool{
+		Name:        "forgejo_pull_merge",
+		Title:       "Merge pull request",
+		Description: "Merge a pull request with a merge/squash/rebase method and report whether it was merged or already merged.",
+		Annotations: writeAnnotations("Merge pull request", false),
+	}, func(ctx context.Context, _ *mcp.CallToolRequest, in pullMergeIn) (*mcp.CallToolResult, domain.PullMergeResult, error) {
+		res, err := application.MergePullRequest(ctx, client, in.Owner, in.Repo, in.Index, in.Method)
+		return nil, res, err
+	})
+
+	mcp.AddTool(s, &mcp.Tool{
+		Name:        "forgejo_pull_review",
+		Title:       "Review pull request",
+		Description: "Create and submit a pull request review (approve/comment/request_changes) in one call.",
+		Annotations: writeAnnotations("Review pull request", false),
+	}, func(ctx context.Context, _ *mcp.CallToolRequest, in pullReviewIn) (*mcp.CallToolResult, domain.Review, error) {
+		review, err := application.ReviewPullRequest(ctx, client, in.Owner, in.Repo, in.Index, in.Body, in.Event)
+		return nil, review, err
+	})
+
+	mcp.AddTool(s, &mcp.Tool{
+		Name:        "forgejo_release_create",
+		Title:       "Create release",
+		Description: "Create a release for an existing tag with a title and notes.",
+		Annotations: writeAnnotations("Create release", false),
+	}, func(ctx context.Context, _ *mcp.CallToolRequest, in releaseCreateIn) (*mcp.CallToolResult, domain.Release, error) {
+		release, err := application.CreateRelease(ctx, client, domain.CreateReleaseInput{
+			Owner: in.Owner, Repo: in.Repo, Tag: in.Tag, Name: in.Name, Notes: in.Notes,
+		})
+		return nil, release, err
+	})
+}
+
+type repoCreateIn struct {
+	Owner    string `json:"owner,omitempty" jsonschema:"Repository owner/namespace; empty creates under the current user"`
+	Name     string `json:"name" jsonschema:"Repository name"`
+	Private  bool   `json:"private,omitempty" jsonschema:"Create a private repository"`
+	AutoInit bool   `json:"auto_init,omitempty" jsonschema:"Initialize the repository with a README"`
+}
+
+type fileWriteIn struct {
+	Owner   string `json:"owner" jsonschema:"Repository owner/namespace"`
+	Repo    string `json:"repo" jsonschema:"Repository name"`
+	Path    string `json:"path" jsonschema:"File path in the repository"`
+	Branch  string `json:"branch,omitempty" jsonschema:"Branch to write to; defaults to the default branch"`
+	Message string `json:"message" jsonschema:"Commit message"`
+	Content string `json:"content" jsonschema:"File text content"`
+}
+
+type fileWriteManyIn struct {
+	Owner   string        `json:"owner" jsonschema:"Repository owner/namespace"`
+	Repo    string        `json:"repo" jsonschema:"Repository name"`
+	Branch  string        `json:"branch,omitempty" jsonschema:"Branch to write to; defaults to the default branch"`
+	Message string        `json:"message" jsonschema:"Commit message"`
+	Files   []fileEntryIn `json:"files" jsonschema:"File operations to apply in one commit"`
+}
+
+type fileEntryIn struct {
+	Path      string `json:"path" jsonschema:"File path"`
+	Content   string `json:"content,omitempty" jsonschema:"File content (text)"`
+	Operation string `json:"operation" jsonschema:"Operation: create/update/delete"`
+}
+
+type branchCreateIn struct {
+	Owner     string `json:"owner" jsonschema:"Repository owner/namespace"`
+	Repo      string `json:"repo" jsonschema:"Repository name"`
+	NewBranch string `json:"new_branch" jsonschema:"New branch name"`
+	OldRef    string `json:"old_ref,omitempty" jsonschema:"Source branch/tag/sha; defaults to the default branch"`
+}
+
+type issueCreateIn struct {
+	Owner     string  `json:"owner" jsonschema:"Repository owner/namespace"`
+	Repo      string  `json:"repo" jsonschema:"Repository name"`
+	Title     string  `json:"title" jsonschema:"Issue title"`
+	Body      string  `json:"body,omitempty" jsonschema:"Issue body"`
+	Labels    []int64 `json:"labels,omitempty" jsonschema:"Label IDs to apply"`
+	Milestone int64   `json:"milestone,omitempty" jsonschema:"Milestone ID"`
+}
+
+type issueUpdateIn struct {
+	Owner string `json:"owner" jsonschema:"Repository owner/namespace"`
+	Repo  string `json:"repo" jsonschema:"Repository name"`
+	Index int64  `json:"index" jsonschema:"Issue index number"`
+	Title string `json:"title,omitempty" jsonschema:"New title"`
+	Body  string `json:"body,omitempty" jsonschema:"New body"`
+	State string `json:"state,omitempty" jsonschema:"New state (open/closed)"`
+}
+
+type issueCommentAddIn struct {
+	Owner string `json:"owner" jsonschema:"Repository owner/namespace"`
+	Repo  string `json:"repo" jsonschema:"Repository name"`
+	Index int64  `json:"index" jsonschema:"Issue index number"`
+	Body  string `json:"body" jsonschema:"Comment text"`
+}
+
+type pullCreateIn struct {
+	Owner string `json:"owner" jsonschema:"Repository owner/namespace"`
+	Repo  string `json:"repo" jsonschema:"Repository name"`
+	Head  string `json:"head" jsonschema:"Head branch"`
+	Base  string `json:"base" jsonschema:"Base branch"`
+	Title string `json:"title" jsonschema:"Pull request title"`
+	Body  string `json:"body,omitempty" jsonschema:"Pull request body"`
+}
+
+type pullUpdateIn struct {
+	Owner string `json:"owner" jsonschema:"Repository owner/namespace"`
+	Repo  string `json:"repo" jsonschema:"Repository name"`
+	Index int64  `json:"index" jsonschema:"Pull request number"`
+	Title string `json:"title,omitempty" jsonschema:"New title"`
+	Body  string `json:"body,omitempty" jsonschema:"New body"`
+	State string `json:"state,omitempty" jsonschema:"New state (open/closed)"`
+}
+
+type pullMergeIn struct {
+	Owner  string `json:"owner" jsonschema:"Repository owner/namespace"`
+	Repo   string `json:"repo" jsonschema:"Repository name"`
+	Index  int64  `json:"index" jsonschema:"Pull request number"`
+	Method string `json:"method" jsonschema:"Merge method (merge/squash/rebase)"`
+}
+
+type pullReviewIn struct {
+	Owner string `json:"owner" jsonschema:"Repository owner/namespace"`
+	Repo  string `json:"repo" jsonschema:"Repository name"`
+	Index int64  `json:"index" jsonschema:"Pull request number"`
+	Body  string `json:"body,omitempty" jsonschema:"Review body"`
+	Event string `json:"event" jsonschema:"Review event (approve/comment/request_changes)"`
+}
+
+type releaseCreateIn struct {
+	Owner string `json:"owner" jsonschema:"Repository owner/namespace"`
+	Repo  string `json:"repo" jsonschema:"Repository name"`
+	Tag   string `json:"tag" jsonschema:"Tag name"`
+	Name  string `json:"name,omitempty" jsonschema:"Release title"`
+	Notes string `json:"notes,omitempty" jsonschema:"Release notes"`
 }

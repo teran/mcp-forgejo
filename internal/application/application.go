@@ -5,6 +5,8 @@ package application
 
 import (
 	"context"
+	"errors"
+	"strings"
 
 	"example.com/teran/mcp-forgejo/internal/domain"
 )
@@ -92,4 +94,138 @@ func ListReleases(ctx context.Context, svc domain.ReleaseService, owner, repo st
 		return []domain.Release{rel}, nil
 	}
 	return svc.ListReleases(ctx, owner, repo, page, limit)
+}
+
+// validationError builds a KindValidation domain error. It is returned when a
+// use-case input fails validation before any service call is made.
+func validationError(msg string) error {
+	return domain.NewForgejoError(domain.KindValidation, msg)
+}
+
+// CreateRepository creates a repository. An empty name is rejected before the
+// service is invoked (SPEC 6.2 #14).
+func CreateRepository(ctx context.Context, svc domain.RepositoryWriteService, in domain.CreateRepositoryInput) (domain.Repository, error) {
+	if strings.TrimSpace(in.Name) == "" {
+		return domain.Repository{}, validationError("repository name is required")
+	}
+	return svc.CreateRepository(ctx, in)
+}
+
+// WriteFile writes a single file: it probes for the file and creates it when
+// absent or updates it (carrying the existing blob SHA) when present. A probe
+// error that is not a 404 is propagated without any write. Not idempotent —
+// every call records a new commit (SPEC 6.2 #15).
+func WriteFile(ctx context.Context, svc domain.FileWriteOrchestrator, in domain.WriteFileInput) (domain.FileResult, error) {
+	if strings.TrimSpace(in.Path) == "" {
+		return domain.FileResult{}, validationError("file path is required")
+	}
+	existing, err := svc.GetFile(ctx, in.Owner, in.Repo, in.Path, in.Branch)
+	if err != nil {
+		var fe *domain.ForgejoError
+		if errors.As(err, &fe) && fe.Kind == domain.KindNotFound {
+			return svc.CreateFile(ctx, domain.CreateFileInput(in))
+		}
+		return domain.FileResult{}, err
+	}
+	return svc.UpdateFile(ctx, domain.UpdateFileInput{
+		Owner: in.Owner, Repo: in.Repo, Path: in.Path, Branch: in.Branch, Message: in.Message,
+		SHA: existing.SHA, Content: in.Content,
+	})
+}
+
+// WriteManyFiles applies several file operations in a single commit
+// (SPEC 6.2 #16).
+func WriteManyFiles(ctx context.Context, svc domain.FileWriteOrchestrator, in domain.ChangeFilesInput) (domain.ChangeFilesResult, error) {
+	return svc.ChangeFiles(ctx, in)
+}
+
+// CreateBranch creates a new branch from an existing ref (SPEC 6.2 #17).
+func CreateBranch(ctx context.Context, svc domain.BranchWriteService, owner, repo, newBranch, oldRef string) (domain.Branch, error) {
+	if strings.TrimSpace(newBranch) == "" {
+		return domain.Branch{}, validationError("branch name is required")
+	}
+	return svc.CreateBranch(ctx, owner, repo, newBranch, oldRef)
+}
+
+// CreateIssue creates an issue (SPEC 6.2 #18).
+func CreateIssue(ctx context.Context, svc domain.IssueWriteService, in domain.CreateIssueInput) (domain.Issue, error) {
+	if strings.TrimSpace(in.Title) == "" {
+		return domain.Issue{}, validationError("issue title is required")
+	}
+	return svc.CreateIssue(ctx, in)
+}
+
+// UpdateIssue edits an existing issue (title/body/state). Repeating the same
+// edit is idempotent (SPEC 6.2 #19).
+func UpdateIssue(ctx context.Context, svc domain.IssueWriteService, in domain.UpdateIssueInput) (domain.Issue, error) {
+	return svc.UpdateIssue(ctx, in)
+}
+
+// AddIssueComment appends a comment to an issue. Each call adds a new comment,
+// so it is not idempotent (SPEC 6.2 #20).
+func AddIssueComment(ctx context.Context, svc domain.IssueWriteService, owner, repo string, index int64, body string) (domain.Comment, error) {
+	if strings.TrimSpace(body) == "" {
+		return domain.Comment{}, validationError("comment body is required")
+	}
+	return svc.CreateIssueComment(ctx, owner, repo, index, body)
+}
+
+// CreatePullRequest opens a pull request (SPEC 6.2 #21).
+func CreatePullRequest(ctx context.Context, svc domain.PullRequestWriteService, in domain.CreatePullRequestInput) (domain.PullRequest, error) {
+	if strings.TrimSpace(in.Title) == "" {
+		return domain.PullRequest{}, validationError("pull request title is required")
+	}
+	return svc.CreatePullRequest(ctx, in)
+}
+
+// UpdatePullRequest edits an existing pull request. Repeating the same edit is
+// idempotent (SPEC 6.2 #22).
+func UpdatePullRequest(ctx context.Context, svc domain.PullRequestWriteService, in domain.UpdatePullRequestInput) (domain.PullRequest, error) {
+	return svc.UpdatePullRequest(ctx, in)
+}
+
+// MergePullRequest merges a pull request, first checking whether it has already
+// been merged. An already-merged PR is reported as such without a further merge
+// call (SPEC 6.2 #23).
+func MergePullRequest(ctx context.Context, svc domain.PullRequestWriteService, owner, repo string, index int64, method string) (domain.PullMergeResult, error) {
+	switch method {
+	case "merge", "squash", "rebase":
+	default:
+		return domain.PullMergeResult{}, validationError("invalid merge method")
+	}
+	merged, err := svc.IsPullRequestMerged(ctx, owner, repo, index)
+	if err != nil {
+		return domain.PullMergeResult{}, err
+	}
+	if merged {
+		return domain.PullMergeResult{Merged: false, AlreadyMerged: true}, nil
+	}
+	if err := svc.MergePullRequest(ctx, owner, repo, index, method); err != nil {
+		return domain.PullMergeResult{}, err
+	}
+	return domain.PullMergeResult{Merged: true, AlreadyMerged: false}, nil
+}
+
+// ReviewPullRequest creates and then submits a pull request review in a single
+// call; the submit references the review ID produced by the create
+// (SPEC 6.2 #24).
+func ReviewPullRequest(ctx context.Context, svc domain.PullRequestWriteService, owner, repo string, index int64, body, event string) (domain.Review, error) {
+	switch strings.ToLower(event) {
+	case "approve", "approved", "comment", "request_changes", "requestchanges":
+	default:
+		return domain.Review{}, validationError("invalid review event")
+	}
+	review, err := svc.CreatePullReview(ctx, owner, repo, index, body)
+	if err != nil {
+		return domain.Review{}, err
+	}
+	return svc.SubmitPullReview(ctx, owner, repo, index, review.ID, event)
+}
+
+// CreateRelease creates a release for an existing tag (SPEC 6.2 #25).
+func CreateRelease(ctx context.Context, svc domain.ReleaseWriteService, in domain.CreateReleaseInput) (domain.Release, error) {
+	if strings.TrimSpace(in.Tag) == "" {
+		return domain.Release{}, validationError("release tag is required")
+	}
+	return svc.CreateRelease(ctx, in)
 }

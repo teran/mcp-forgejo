@@ -315,6 +315,212 @@ func (c *Client) GetLatestRelease(ctx context.Context, owner, repo string) (doma
 	return out, err
 }
 
+// CreateRepository implements domain.RepositoryWriteService. An empty Owner
+// creates under the current authenticated user; a non-empty Owner creates
+// under that organization (createCurrentUserRepo / orgCreateRepo).
+func (c *Client) CreateRepository(ctx context.Context, in domain.CreateRepositoryInput) (domain.Repository, error) {
+	var path string
+	if in.Owner != "" {
+		path = fmt.Sprintf("/api/v1/orgs/%s/repos", pathEscape(in.Owner))
+	} else {
+		path = "/api/v1/user/repos"
+	}
+	body := createRepositoryRequest{Name: in.Name, Private: in.Private, AutoInit: in.AutoInit}
+	var out domain.Repository
+	err := c.doJSON(ctx, http.MethodPost, path, body, &out)
+	return out, err
+}
+
+// CreateFile implements domain.FileWriteOrchestrator (repoCreateFile).
+func (c *Client) CreateFile(ctx context.Context, in domain.CreateFileInput) (domain.FileResult, error) {
+	path := fmt.Sprintf("/api/v1/repos/%s/%s/contents/%s", pathEscape(in.Owner), pathEscape(in.Repo), pathEscape(in.Path))
+	body := fileWriteRequest{
+		Message: in.Message,
+		Branch:  in.Branch,
+		SHA:     "",
+		Content: base64.StdEncoding.EncodeToString([]byte(in.Content)),
+	}
+	var wire fileWriteResponse
+	if err := c.doJSON(ctx, http.MethodPost, path, body, &wire); err != nil {
+		return domain.FileResult{}, err
+	}
+	return fileResultFromWire(wire), nil
+}
+
+// UpdateFile implements domain.FileWriteOrchestrator (repoUpdateFile). The
+// request must carry the blob SHA of the current version so Forgejo can detect
+// concurrent modifications.
+func (c *Client) UpdateFile(ctx context.Context, in domain.UpdateFileInput) (domain.FileResult, error) {
+	path := fmt.Sprintf("/api/v1/repos/%s/%s/contents/%s", pathEscape(in.Owner), pathEscape(in.Repo), pathEscape(in.Path))
+	body := fileWriteRequest{
+		Message: in.Message,
+		Branch:  in.Branch,
+		SHA:     in.SHA,
+		Content: base64.StdEncoding.EncodeToString([]byte(in.Content)),
+	}
+	var wire fileWriteResponse
+	if err := c.doJSON(ctx, http.MethodPut, path, body, &wire); err != nil {
+		return domain.FileResult{}, err
+	}
+	return fileResultFromWire(wire), nil
+}
+
+// ChangeFiles implements domain.FileWriteOrchestrator (repoChangeFiles). It
+// applies several file operations in a single commit; each file's content is
+// base64-encoded on the wire.
+func (c *Client) ChangeFiles(ctx context.Context, in domain.ChangeFilesInput) (domain.ChangeFilesResult, error) {
+	path := fmt.Sprintf("/api/v1/repos/%s/%s/contents", pathEscape(in.Owner), pathEscape(in.Repo))
+	body := changeFilesRequest{Message: in.Message, Branch: in.Branch}
+	for _, f := range in.Files {
+		body.Files = append(body.Files, changeFileEntryRequest{
+			Path:      f.Path,
+			Operation: f.Operation,
+			Content:   base64.StdEncoding.EncodeToString([]byte(f.Content)),
+		})
+	}
+	var wire changeFilesResponse
+	if err := c.doJSON(ctx, http.MethodPost, path, body, &wire); err != nil {
+		return domain.ChangeFilesResult{}, err
+	}
+	res := domain.ChangeFilesResult{CommitSHA: wire.Commit.SHA}
+	for _, f := range wire.Files {
+		res.Files = append(res.Files, domain.ChangeFileResult{Path: f.Path, SHA: f.SHA, Status: f.Status})
+	}
+	return res, nil
+}
+
+// CreateBranch implements domain.BranchWriteService (repoCreateBranch). A 409
+// conflict is surfaced as KindConflict when the branch already exists.
+func (c *Client) CreateBranch(ctx context.Context, owner, repo, newBranch, oldRef string) (domain.Branch, error) {
+	path := fmt.Sprintf("/api/v1/repos/%s/%s/branches", pathEscape(owner), pathEscape(repo))
+	body := struct {
+		NewBranch string `json:"new_branch_name"`
+		OldRef    string `json:"old_ref_name"`
+	}{NewBranch: newBranch, OldRef: oldRef}
+	var wire branchWire
+	if err := c.doJSON(ctx, http.MethodPost, path, body, &wire); err != nil {
+		return domain.Branch{}, err
+	}
+	return domain.Branch{Name: wire.Name, Protected: wire.Protected, Default: wire.Default, CommitSHA: wire.Commit.ID}, nil
+}
+
+// CreateIssue implements domain.IssueWriteService (issueCreateIssue).
+func (c *Client) CreateIssue(ctx context.Context, in domain.CreateIssueInput) (domain.Issue, error) {
+	path := fmt.Sprintf("/api/v1/repos/%s/%s/issues", pathEscape(in.Owner), pathEscape(in.Repo))
+	body := createIssueRequest{Title: in.Title, Body: in.Body, Labels: in.Labels, Milestone: in.Milestone}
+	var out domain.Issue
+	err := c.doJSON(ctx, http.MethodPost, path, body, &out)
+	return out, err
+}
+
+// UpdateIssue implements domain.IssueWriteService (issueEditIssue).
+func (c *Client) UpdateIssue(ctx context.Context, in domain.UpdateIssueInput) (domain.Issue, error) {
+	path := fmt.Sprintf("/api/v1/repos/%s/%s/issues/%s", pathEscape(in.Owner), pathEscape(in.Repo), strconv.FormatInt(in.Index, 10))
+	body := updateIssueRequest{Title: in.Title, Body: in.Body, State: in.State}
+	var out domain.Issue
+	err := c.doJSON(ctx, http.MethodPatch, path, body, &out)
+	return out, err
+}
+
+// CreateIssueComment implements domain.IssueWriteService (issueCreateComment).
+func (c *Client) CreateIssueComment(ctx context.Context, owner, repo string, index int64, body string) (domain.Comment, error) {
+	path := fmt.Sprintf("/api/v1/repos/%s/%s/issues/%s/comments", pathEscape(owner), pathEscape(repo), strconv.FormatInt(index, 10))
+	req := struct {
+		Body string `json:"body"`
+	}{Body: body}
+	var out domain.Comment
+	err := c.doJSON(ctx, http.MethodPost, path, req, &out)
+	return out, err
+}
+
+// CreatePullRequest implements domain.PullRequestWriteService
+// (repoCreatePullRequest).
+func (c *Client) CreatePullRequest(ctx context.Context, in domain.CreatePullRequestInput) (domain.PullRequest, error) {
+	path := fmt.Sprintf("/api/v1/repos/%s/%s/pulls", pathEscape(in.Owner), pathEscape(in.Repo))
+	body := createPullRequestRequest{Title: in.Title, Body: in.Body, Head: in.Head, Base: in.Base}
+	var out domain.PullRequest
+	err := c.doJSON(ctx, http.MethodPost, path, body, &out)
+	return out, err
+}
+
+// UpdatePullRequest implements domain.PullRequestWriteService
+// (repoEditPullRequest).
+func (c *Client) UpdatePullRequest(ctx context.Context, in domain.UpdatePullRequestInput) (domain.PullRequest, error) {
+	path := fmt.Sprintf("/api/v1/repos/%s/%s/pulls/%s", pathEscape(in.Owner), pathEscape(in.Repo), strconv.FormatInt(in.Index, 10))
+	body := updateIssueRequest{Title: in.Title, Body: in.Body, State: in.State}
+	var out domain.PullRequest
+	err := c.doJSON(ctx, http.MethodPatch, path, body, &out)
+	return out, err
+}
+
+// IsPullRequestMerged implements domain.PullRequestWriteService
+// (repoPullRequestIsMerged). Forgejo returns 204 when merged and 404 when not;
+// any other status maps onto the error taxonomy.
+func (c *Client) IsPullRequestMerged(ctx context.Context, owner, repo string, index int64) (bool, error) {
+	path := fmt.Sprintf("/api/v1/repos/%s/%s/pulls/%s/merge", pathEscape(owner), pathEscape(repo), strconv.FormatInt(index, 10))
+	req := c.resty.R().SetContext(ctx).SetResponseBodyUnlimitedReads(true)
+	resp, err := req.Execute(http.MethodGet, path)
+	if err != nil {
+		return false, domain.NewForgejoError(domain.KindTransient, domain.Redact(fmt.Sprintf("request failed: %v", err), c.token))
+	}
+	switch resp.StatusCode() {
+	case http.StatusNoContent:
+		return true, nil
+	case http.StatusNotFound:
+		return false, nil
+	default:
+		if resp.StatusCode() >= 200 && resp.StatusCode() < 300 {
+			return true, nil
+		}
+		return false, mapStatusError(resp.StatusCode(), string(resp.Bytes()), c.token)
+	}
+}
+
+// MergePullRequest implements domain.PullRequestWriteService
+// (repoMergePullRequest). The merge method is passed through verbatim.
+func (c *Client) MergePullRequest(ctx context.Context, owner, repo string, index int64, method string) error {
+	path := fmt.Sprintf("/api/v1/repos/%s/%s/pulls/%s/merge", pathEscape(owner), pathEscape(repo), strconv.FormatInt(index, 10))
+	body := struct {
+		Do string `json:"Do"`
+	}{Do: method}
+	return c.doJSON(ctx, http.MethodPost, path, body, nil)
+}
+
+// CreatePullReview implements domain.PullRequestWriteService
+// (repoCreatePullReview). It creates a pending review; the caller later submits
+// it with the returned review ID.
+func (c *Client) CreatePullReview(ctx context.Context, owner, repo string, index int64, body string) (domain.Review, error) {
+	path := fmt.Sprintf("/api/v1/repos/%s/%s/pulls/%s/reviews", pathEscape(owner), pathEscape(repo), strconv.FormatInt(index, 10))
+	req := struct {
+		Event string `json:"event"`
+		Body  string `json:"body"`
+	}{Event: "PENDING", Body: body}
+	var out domain.Review
+	err := c.doJSON(ctx, http.MethodPost, path, req, &out)
+	return out, err
+}
+
+// SubmitPullReview implements domain.PullRequestWriteService
+// (repoSubmitPullReview).
+func (c *Client) SubmitPullReview(ctx context.Context, owner, repo string, index, reviewID int64, event string) (domain.Review, error) {
+	path := fmt.Sprintf("/api/v1/repos/%s/%s/pulls/%s/reviews/%s", pathEscape(owner), pathEscape(repo), strconv.FormatInt(index, 10), strconv.FormatInt(reviewID, 10))
+	req := struct {
+		Event string `json:"event"`
+	}{Event: event}
+	var out domain.Review
+	err := c.doJSON(ctx, http.MethodPost, path, req, &out)
+	return out, err
+}
+
+// CreateRelease implements domain.ReleaseWriteService (repoCreateRelease).
+func (c *Client) CreateRelease(ctx context.Context, in domain.CreateReleaseInput) (domain.Release, error) {
+	path := fmt.Sprintf("/api/v1/repos/%s/%s/releases", pathEscape(in.Owner), pathEscape(in.Repo))
+	body := createReleaseRequest{TagName: in.Tag, Name: in.Name, Body: in.Notes}
+	var out domain.Release
+	err := c.doJSON(ctx, http.MethodPost, path, body, &out)
+	return out, err
+}
+
 // repoSearchResponse is the wire envelope of the Forgejo repo search endpoint.
 type repoSearchResponse struct {
 	OK   bool                `json:"ok"`
@@ -373,6 +579,102 @@ type contentResponse struct {
 	Type     string `json:"type"`
 	Content  string `json:"content"`
 	Encoding string `json:"encoding"`
+}
+
+// createRepositoryRequest is the body of repoCreateFile / orgCreateRepo. The
+// owner goes in the URL path, never the body.
+type createRepositoryRequest struct {
+	Name     string `json:"name"`
+	Private  bool   `json:"private"`
+	AutoInit bool   `json:"auto_init"`
+}
+
+// fileWriteRequest is the shared body of repoCreateFile and repoUpdateFile.
+// Content is base64-encoded by the caller; SHA is set only for updates.
+type fileWriteRequest struct {
+	Message string `json:"message"`
+	Branch  string `json:"branch,omitempty"`
+	SHA     string `json:"sha,omitempty"`
+	Content string `json:"content"`
+}
+
+// fileWriteResponse is the wire shape of a repoCreateFile / repoUpdateFile
+// response: the resulting contents entry plus the commit it created.
+type fileWriteResponse struct {
+	Content contentResponse `json:"content"`
+	Commit  struct {
+		SHA string `json:"sha"`
+	} `json:"commit"`
+}
+
+// fileResultFromWire maps a fileWriteResponse into a domain.FileResult,
+// decoding the base64 content back to text.
+func fileResultFromWire(w fileWriteResponse) domain.FileResult {
+	res := domain.FileResult{Path: w.Content.Path, SHA: w.Content.SHA, CommitSHA: w.Commit.SHA}
+	if w.Content.Encoding == "base64" {
+		if data, err := base64.StdEncoding.DecodeString(w.Content.Content); err == nil {
+			res.Content = string(data)
+		}
+	} else {
+		res.Content = w.Content.Content
+	}
+	return res
+}
+
+// changeFilesRequest is the body of repoChangeFiles.
+type changeFilesRequest struct {
+	Message string                   `json:"message"`
+	Branch  string                   `json:"branch,omitempty"`
+	Files   []changeFileEntryRequest `json:"files"`
+}
+
+// changeFileEntryRequest is a single file operation within repoChangeFiles.
+type changeFileEntryRequest struct {
+	Path      string `json:"path"`
+	Operation string `json:"operation"`
+	Content   string `json:"content"`
+}
+
+// changeFilesResponse is the wire shape of a repoChangeFiles response.
+type changeFilesResponse struct {
+	Commit struct {
+		SHA string `json:"sha"`
+	} `json:"commit"`
+	Files []struct {
+		Path   string `json:"path"`
+		SHA    string `json:"sha"`
+		Status string `json:"status"`
+	} `json:"files"`
+}
+
+// createIssueRequest is the body of issueCreateIssue.
+type createIssueRequest struct {
+	Title     string  `json:"title"`
+	Body      string  `json:"body,omitempty"`
+	Labels    []int64 `json:"labels,omitempty"`
+	Milestone int64   `json:"milestone,omitempty"`
+}
+
+// updateIssueRequest is the body of issueEditIssue and repoEditPullRequest.
+type updateIssueRequest struct {
+	Title string `json:"title,omitempty"`
+	Body  string `json:"body,omitempty"`
+	State string `json:"state,omitempty"`
+}
+
+// createPullRequestRequest is the body of repoCreatePullRequest.
+type createPullRequestRequest struct {
+	Title string `json:"title"`
+	Body  string `json:"body,omitempty"`
+	Head  string `json:"head"`
+	Base  string `json:"base"`
+}
+
+// createReleaseRequest is the body of repoCreateRelease.
+type createReleaseRequest struct {
+	TagName string `json:"tag_name"`
+	Name    string `json:"name,omitempty"`
+	Body    string `json:"body,omitempty"`
 }
 
 // decodeFile converts a raw contents response into a domain.File, base64
@@ -437,6 +739,38 @@ func (c *Client) do(ctx context.Context, method, path string, query url.Values, 
 	}
 	body := resp.Bytes()
 	if err := json.Unmarshal(body, out); err != nil {
+		return domain.NewForgejoError(domain.KindValidation, domain.Redact(fmt.Sprintf("failed to decode Forgejo response: %v", err), c.token))
+	}
+	return nil
+}
+
+// doJSON performs a request with an optional JSON body and decodes the JSON
+// response into out (if out is non-nil). Failures map onto the domain error
+// taxonomy exactly like do, and the PAT is always redacted from any surfaced
+// message (S2). The body is marshalled by resty, so a nil body sends no
+// payload. Content-bearing fields (e.g. file content) are base64-encoded by
+// the caller before being placed in body, per the Forgejo wire contract.
+func (c *Client) doJSON(ctx context.Context, method, path string, body, out any) error {
+	req := c.resty.R().
+		SetContext(ctx).
+		SetResponseBodyUnlimitedReads(true)
+	if body != nil {
+		req = req.SetBody(body)
+	}
+
+	resp, err := req.Execute(method, path)
+	if err != nil {
+		return domain.NewForgejoError(domain.KindTransient, domain.Redact(fmt.Sprintf("request failed: %v", err), c.token))
+	}
+
+	if resp.StatusCode() < 200 || resp.StatusCode() >= 300 {
+		return mapStatusError(resp.StatusCode(), string(resp.Bytes()), c.token)
+	}
+
+	if out == nil {
+		return nil
+	}
+	if err := json.Unmarshal(resp.Bytes(), out); err != nil {
 		return domain.NewForgejoError(domain.KindValidation, domain.Redact(fmt.Sprintf("failed to decode Forgejo response: %v", err), c.token))
 	}
 	return nil
