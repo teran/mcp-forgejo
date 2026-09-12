@@ -40,7 +40,7 @@ func startupBanner() string {
 // These variables are the seams that let tests replace the real server build
 // and transport runners without spawning blocking servers.
 var (
-	buildServer   = server.Build
+	buildServer   = server.BuildWithLogger
 	runStdio      = server.RunStdio
 	runHTTPServer = func(_ context.Context, cfg config.Config, s *mcp.Server) error {
 		httpSrv := &http.Server{
@@ -100,7 +100,7 @@ func run(args []string) int {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 
-	s, err := buildServer(forgejo.Config{BaseURL: cfg.ForgejoURL, Token: cfg.ForgejoToken})
+	s, err := buildServer(forgejo.Config{BaseURL: cfg.ForgejoURL, Token: cfg.ForgejoToken}, logger)
 	if err != nil {
 		logger.WithError(err).Error("failed to build server")
 		return 1

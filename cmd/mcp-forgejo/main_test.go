@@ -9,6 +9,7 @@ import (
 	"testing"
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
+	"github.com/sirupsen/logrus"
 
 	"example.com/teran/mcp-forgejo/internal/config"
 	"example.com/teran/mcp-forgejo/internal/infrastructure/forgejo"
@@ -48,7 +49,7 @@ func TestRunLoggingError(t *testing.T) {
 func TestRunBuildError(t *testing.T) {
 	setBaseEnv(t)
 	orig := buildServer
-	buildServer = func(forgejo.Config) (*mcp.Server, error) {
+	buildServer = func(forgejo.Config, *logrus.Logger) (*mcp.Server, error) {
 		return nil, errors.New("build failed")
 	}
 	defer func() { buildServer = orig }()
@@ -120,6 +121,74 @@ func TestRunStdioClosesLogFile(t *testing.T) {
 
 	if code := run([]string{"--transport", "stdio"}); code != 0 {
 		t.Fatalf("expected exit 0, got %d", code)
+	}
+}
+
+// TestRunPassesLoggerToBuildWhenEnabled verifies that when logging is enabled
+// (LOG_LEVEL set) the composition root forwards the non-nil logrus logger from
+// logging.Setup into buildServer, so the server can wire L7/L8/L9 logging
+// (per-call tool Debug logs, upstream resty request_id logs, slog->logrus
+// bridge).
+func TestRunPassesLoggerToBuildWhenEnabled(t *testing.T) {
+	setBaseEnv(t)
+	t.Setenv("LOG_LEVEL", "info")
+
+	origBuild := buildServer
+	origRun := runStdio
+	var gotLogger *logrus.Logger
+	buildServer = func(_ forgejo.Config, log *logrus.Logger) (*mcp.Server, error) {
+		gotLogger = log
+		return &mcp.Server{}, nil
+	}
+	runStdio = func(context.Context, *mcp.Server) error { return nil }
+	defer func() {
+		buildServer = origBuild
+		runStdio = origRun
+	}()
+
+	if code := run([]string{"--transport", "stdio"}); code != 0 {
+		t.Fatalf("expected exit 0, got %d", code)
+	}
+
+	if gotLogger == nil {
+		t.Fatal("expected a non-nil *logrus.Logger to be passed to buildServer when LOG_LEVEL is set")
+	}
+	if gotLogger.Out == io.Discard {
+		t.Fatal("expected an enabled logger (output != io.Discard) to be passed to buildServer")
+	}
+}
+
+// TestRunPassesLoggerToBuildWhenDisabled verifies that when logging is disabled
+// (LOG_LEVEL unset) the composition root still forwards the logger returned by
+// logging.Setup. Setup always returns a non-nil logger; when the level is empty
+// it writes to io.Discard. buildServer therefore receives a non-nil discard
+// logger (never a nil pointer).
+func TestRunPassesLoggerToBuildWhenDisabled(t *testing.T) {
+	setBaseEnv(t)
+	t.Setenv("LOG_LEVEL", "")
+
+	origBuild := buildServer
+	origRun := runStdio
+	var gotLogger *logrus.Logger
+	buildServer = func(_ forgejo.Config, log *logrus.Logger) (*mcp.Server, error) {
+		gotLogger = log
+		return &mcp.Server{}, nil
+	}
+	runStdio = func(context.Context, *mcp.Server) error { return nil }
+	defer func() {
+		buildServer = origBuild
+		runStdio = origRun
+	}()
+
+	if code := run([]string{"--transport", "stdio"}); code != 0 {
+		t.Fatalf("expected exit 0, got %d", code)
+	}
+
+	if gotLogger == nil {
+		t.Fatal("expected a non-nil *logrus.Logger to be passed to buildServer even when logging is disabled")
+	}
+	if gotLogger.Out != io.Discard {
+		t.Fatalf("expected a discard logger when LOG_LEVEL is unset, got output writer %T", gotLogger.Out)
 	}
 }
 
