@@ -33,41 +33,43 @@ branches, releases, and organizations.
 
 ## Features
 
-> **Implementation status.** The tool surface below is the **target design**
-> (roadmap). **Stage 1** currently implements **5 read tools** — marked
-> **`[implemented]`** — while everything else is **planned / target surface** and
-> is not yet registered in the running server. See `SPEC.md` §6 for the full
-> surface with per-tool status.
+The server exposes **31 tools** covering the full **read → write → delete**
+surface. Each is a complete use-case (no client-side chaining of low-level
+calls) and is described with full metadata (annotations + per-tool instructions)
+in `SPEC.md` §6.
 
-**Read**
-- `[implemented]` Search & inspect repositories — currently `forgejo_repo_get`
-  (repo search `forgejo_repo_search` is **planned**).
-- `[implemented]` List your organizations (`forgejo_org_list`).
-- `[implemented]` Browse repository contents and read files with commit
-  metadata (`forgejo_repo_list_contents`, `forgejo_file_get`).
-- **Planned:** get diffs, commits, and branches (`forgejo_diff_get`,
-  `forgejo_commit_list`, `forgejo_branch_list`).
-- `[implemented]` Get an issue with its comments (`forgejo_issue_get`); listing
-  issues (`forgejo_issue_list`) is **planned**.
-- **Planned:** list/inspect pull requests including changed files and checks
-  (`forgejo_pull_list`, `forgejo_pull_get`).
-- **Planned:** list releases (`forgejo_release_list`).
+**Read (13)**
+- `forgejo_repo_search` — search repositories
+- `forgejo_repo_get` — repository details
+- `forgejo_org_list` — list your organizations
+- `forgejo_repo_list_contents` — list directory contents
+- `forgejo_file_get` — read a file
+- `forgejo_diff_get` — diff between refs, or a PR diff
+- `forgejo_commit_list` — list commits
+- `forgejo_branch_list` — list branches
+- `forgejo_issue_list` — list issues
+- `forgejo_issue_get` — get an issue **and** its comments
+- `forgejo_pull_list` — list pull requests
+- `forgejo_pull_get` — get a PR **with** its changed files **and** checks
+- `forgejo_release_list` — list releases (or the latest)
 
-**Write / Update** — *planned*
-- Create repositories (`forgejo_repo_create`).
-- Write/update single or multiple files in one commit
-  (`forgejo_file_write`, `forgejo_file_write_many`), create branches
-  (`forgejo_branch_create`).
-- Create/update/close/reopen issues and add comments
-  (`forgejo_issue_create`, `forgejo_issue_update`, `forgejo_issue_comment_add`).
-- Create/update/merge/review pull requests (`forgejo_pull_create`,
-  `forgejo_pull_update`, `forgejo_pull_merge`, `forgejo_pull_review`).
-- Create releases (`forgejo_release_create`).
+**Write / Update (12)**
+- `forgejo_repo_create` — create a repository
+- `forgejo_file_write` — write **or** update a file in one commit
+- `forgejo_file_write_many` — write several files in one commit
+- `forgejo_branch_create` — create a branch
+- `forgejo_issue_create` — create an issue
+- `forgejo_issue_update` — update / close / reopen an issue
+- `forgejo_issue_comment_add` — add an issue comment
+- `forgejo_pull_create` — create a pull request
+- `forgejo_pull_update` — update / close / reopen a PR
+- `forgejo_pull_merge` — merge a PR (merge/squash/rebase)
+- `forgejo_pull_review` — create **and** submit a PR review
+- `forgejo_release_create` — create a release
 
-**Delete** — *planned*
-- Delete files, branches, issues, comments, releases, and repositories
-  (`forgejo_file_delete`, `forgejo_branch_delete`, `forgejo_issue_delete`,
-  `forgejo_comment_delete`, `forgejo_release_delete`, `forgejo_repo_delete`).
+**Delete (6)** — destructive; these require explicit confirmation
+- `forgejo_file_delete` · `forgejo_branch_delete` · `forgejo_issue_delete`
+- `forgejo_comment_delete` · `forgejo_release_delete` · `forgejo_repo_delete`
 
 ## Requirements
 
@@ -178,12 +180,20 @@ logging, and error handling.
 
 ## Contributing / TDD
 
-Changes are done **test-first**:
+This project is developed **test-first (TDD)**: a failing test is written
+before the implementation that satisfies it. CI enforces the discipline with a
+**95% coverage gate** and **gremlins** mutation testing as a hard gate.
 
-- `@qa` writes the tests using an **isolated context**.
-- `@developer` writes the implementation using an **isolated context**.
+The `@qa` / `@developer` split referenced elsewhere is how **AI agents** in
+this repo cooperate (each writes tests / implementation in an isolated
+context) — see `AGENTS.md` for the agent operating rules. It does **not** apply
+to a human making changes directly; the test-first rule is universal:
 
-See `AGENTS.md` for the full operating rules.
+1. **Write a failing test** for the behavior you're adding (new tool, bug fix,
+   refactor).
+2. **Implement** just enough to make it pass.
+3. **Keep the gates green** — run the checks in [Development](#development)
+   and ensure coverage stays ≥ 95%.
 
 ## License
 
