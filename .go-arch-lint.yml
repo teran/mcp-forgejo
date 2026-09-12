@@ -85,15 +85,18 @@ deps:
       - domain
 
   # 4. infrastructure implements the Forgejo REST client over domain interfaces,
-  #    using resty.dev/v3 as its outbound HTTP transport (SPEC G9).
+  #    using resty.dev/v3 as its outbound HTTP transport (SPEC G9) and logrus
+  #    for upstream request logging (L7).
   infrastructure:
     mayDependOn:
       - domain
     canUse:
       - resty
+      - logrus
 
   # 5. server wires tools + transports; it may reach domain, application and
-  #    infrastructure (it is the adapter that binds them together).
+  #    infrastructure (it is the adapter that binds them together). It uses the
+  #    MCP SDK and logrus for tool/request logging and the slog bridge (L7/L8).
   server:
     mayDependOn:
       - domain
@@ -101,6 +104,7 @@ deps:
       - infrastructure
     canUse:
       - mcp-sdk
+      - logrus
 
   # 6. config and logging are leaf utilities (no internal deps) that use their
   #    own vendor libraries.

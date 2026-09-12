@@ -5,8 +5,10 @@ package server
 
 import (
 	"context"
+	"log/slog"
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
+	"github.com/sirupsen/logrus"
 
 	"example.com/teran/mcp-forgejo/internal/application"
 	"example.com/teran/mcp-forgejo/internal/domain"
@@ -21,9 +23,28 @@ const (
 
 // Build constructs an *mcp.Server with all registered tools, bound to a
 // Forgejo client built from cfg (the client owns its resty HTTP transport).
+// It is the backward-compatible entry point and delegates to BuildWithLogger
+// with no logger wired (L2: logging disabled).
 func Build(cfg forgejo.Config) (*mcp.Server, error) {
+	return BuildWithLogger(cfg, nil)
+}
+
+// BuildWithLogger constructs an *mcp.Server like Build but additionally wires
+// the provided logrus logger end-to-end (L7/L9/G11): it registers a slog
+// handler (bridging the SDK's internal slog calls into logrus), installs the
+// request-context middleware (request_id + source correlation + per-call tool
+// logging) and attaches the logger to the Forgejo client for upstream request
+// logging. A nil logger disables all of this while keeping the same behaviour.
+func BuildWithLogger(cfg forgejo.Config, log *logrus.Logger) (*mcp.Server, error) {
 	client := forgejo.New(cfg)
-	s := mcp.NewServer(&mcp.Implementation{Name: implName, Version: implVersion}, &mcp.ServerOptions{})
+	client.SetLogger(log)
+
+	opts := &mcp.ServerOptions{}
+	if log != nil {
+		opts.Logger = slog.New(logrusSlogHandler{log: log})
+	}
+	s := mcp.NewServer(&mcp.Implementation{Name: implName, Version: implVersion}, opts)
+	s.AddReceivingMiddleware(requestContextMiddleware(log))
 	registerTools(s, client)
 	return s, nil
 }

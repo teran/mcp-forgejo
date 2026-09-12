@@ -23,6 +23,7 @@ import (
 	"unicode/utf8"
 
 	"example.com/teran/mcp-forgejo/internal/domain"
+	"github.com/sirupsen/logrus"
 	"resty.dev/v3"
 )
 
@@ -42,6 +43,34 @@ type Config struct {
 type Client struct {
 	resty *resty.Client
 	token string
+	log   *logrus.Logger
+}
+
+// SetLogger attaches a logrus logger to the client for upstream request
+// logging (L7). A nil logger disables upstream logging (no-op).
+func (c *Client) SetLogger(l *logrus.Logger) {
+	c.log = l
+}
+
+// logUpstream emits a single Debug line describing an upstream Forgejo request
+// (method, path, byte sizes, status and duration) with the request_id
+// propagated from the context. It is a no-op when no logger is configured.
+func (c *Client) logUpstream(ctx context.Context, method, path string, inBytes, outBytes int64, status int, duration time.Duration) {
+	if c.log == nil {
+		return
+	}
+	e := c.log.WithFields(logrus.Fields{
+		"method":    method,
+		"path":      path,
+		"in_bytes":  inBytes,
+		"out_bytes": outBytes,
+		"status":    status,
+		"duration":  duration.String(),
+	})
+	if id, ok := domain.RequestIDFromContext(ctx); ok {
+		e = e.WithField("request_id", id)
+	}
+	e.Debug("upstream request")
 }
 
 // New constructs a Client using resty's default HTTP transport, pointed at
@@ -795,11 +824,17 @@ func (c *Client) do(ctx context.Context, method, path string, query url.Values, 
 	req := c.resty.R().
 		SetContext(ctx).
 		SetResponseBodyUnlimitedReads(true)
+	if id, ok := domain.RequestIDFromContext(ctx); ok && id != "" {
+		req = req.SetHeader("X-Request-ID", id)
+	}
 	if len(query) > 0 {
 		req = req.SetQueryParamsFromValues(query)
 	}
 
+	inBytes := requestBodyBytes(req.Body)
+	start := time.Now()
 	resp, err := req.Execute(method, path)
+	c.logUpstream(ctx, method, path, inBytes, int64(len(resp.Bytes())), resp.StatusCode(), time.Since(start))
 	if err != nil {
 		return domain.NewForgejoError(domain.KindTransient, domain.Redact(fmt.Sprintf("request failed: %v", err), c.token))
 	}
@@ -832,11 +867,17 @@ func (c *Client) doJSON(ctx context.Context, method, path string, body, out any)
 		// repoDeleteFile endpoint requires a JSON body, so enable it. The
 		// flag is a no-op for other methods.
 		SetMethodDeleteAllowPayload(true)
+	if id, ok := domain.RequestIDFromContext(ctx); ok && id != "" {
+		req = req.SetHeader("X-Request-ID", id)
+	}
 	if body != nil {
 		req = req.SetBody(body)
 	}
 
+	inBytes := requestBodyBytes(req.Body)
+	start := time.Now()
 	resp, err := req.Execute(method, path)
+	c.logUpstream(ctx, method, path, inBytes, int64(len(resp.Bytes())), resp.StatusCode(), time.Since(start))
 	if err != nil {
 		return domain.NewForgejoError(domain.KindTransient, domain.Redact(fmt.Sprintf("request failed: %v", err), c.token))
 	}
@@ -861,11 +902,17 @@ func (c *Client) doText(ctx context.Context, method, path string, query url.Valu
 	req := c.resty.R().
 		SetContext(ctx).
 		SetResponseBodyUnlimitedReads(true)
+	if id, ok := domain.RequestIDFromContext(ctx); ok && id != "" {
+		req = req.SetHeader("X-Request-ID", id)
+	}
 	if len(query) > 0 {
 		req = req.SetQueryParamsFromValues(query)
 	}
 
+	inBytes := requestBodyBytes(req.Body)
+	start := time.Now()
 	resp, err := req.Execute(method, path)
+	c.logUpstream(ctx, method, path, inBytes, int64(len(resp.Bytes())), resp.StatusCode(), time.Since(start))
 	if err != nil {
 		return "", domain.NewForgejoError(domain.KindTransient, domain.Redact(fmt.Sprintf("request failed: %v", err), c.token))
 	}
@@ -874,6 +921,22 @@ func (c *Client) doText(ctx context.Context, method, path string, query url.Valu
 		return "", mapStatusError(resp.StatusCode(), string(resp.Bytes()), c.token)
 	}
 	return string(resp.Bytes()), nil
+}
+
+// requestBodyBytes returns an approximate byte length of a resty request body.
+// It is used only for logging (in_bytes), so the value need not be exact.
+func requestBodyBytes(body any) int64 {
+	if body == nil {
+		return 0
+	}
+	if b, ok := body.([]byte); ok {
+		return int64(len(b))
+	}
+	b, err := json.Marshal(body)
+	if err != nil {
+		return 0
+	}
+	return int64(len(b))
 }
 
 // kindForStatus maps a Forgejo HTTP status onto the domain error taxonomy.
