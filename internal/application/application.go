@@ -312,3 +312,44 @@ func DeleteOrganization(ctx context.Context, svc domain.OrganizationDeleteServic
 	}
 	return svc.DeleteOrganization(ctx, org)
 }
+
+// ListTags lists the git tags of a repository (SPEC 6.1).
+func ListTags(ctx context.Context, svc domain.TagService, owner, repo string) ([]domain.Tag, error) {
+	return svc.ListTags(ctx, owner, repo)
+}
+
+// CreateTag creates a git tag. An empty tag name is rejected before the service
+// is invoked (SPEC 6.2).
+func CreateTag(ctx context.Context, svc domain.TagWriteService, owner, repo string, in domain.CreateTagInput) (domain.Tag, error) {
+	if strings.TrimSpace(in.Name) == "" {
+		return domain.Tag{}, validationError("tag name is required")
+	}
+	return svc.CreateTag(ctx, owner, repo, in)
+}
+
+// DeleteTag deletes a git tag. An empty tag name is rejected before the service
+// is invoked (SPEC 6.3).
+func DeleteTag(ctx context.Context, svc domain.TagDeleteService, owner, repo, tag string) error {
+	if strings.TrimSpace(tag) == "" {
+		return validationError("tag name is required")
+	}
+	return svc.DeleteTag(ctx, owner, repo, tag)
+}
+
+// ForkRepository forks a repository. An empty owner or repo is rejected before
+// the service is invoked (SPEC 6.2).
+func ForkRepository(ctx context.Context, svc domain.RepositoryForkService, owner, repo string, in domain.ForkRepositoryInput) (domain.Repository, error) {
+	if strings.TrimSpace(owner) == "" {
+		return domain.Repository{}, validationError("repository owner is required")
+	}
+	if strings.TrimSpace(repo) == "" {
+		return domain.Repository{}, validationError("repository name is required")
+	}
+	return svc.ForkRepository(ctx, owner, repo, in)
+}
+
+// UpdateRepository edits a repository in place. Repeating the same edit is
+// idempotent; no validation is applied (SPEC 6.2).
+func UpdateRepository(ctx context.Context, svc domain.RepositoryUpdateService, owner, repo string, in domain.UpdateRepositoryInput) (domain.Repository, error) {
+	return svc.UpdateRepository(ctx, owner, repo, in)
+}

@@ -59,6 +59,7 @@ func registerTools(s *mcp.Server, client *forgejo.Client) {
 	registerBatchAReadTools(s, client)
 	registerWriteTools(s, client)
 	registerDeleteTools(s, client)
+	registerBatchTTools(s, client)
 }
 
 // readAnnotations builds the annotation set for read-only tools (SPEC 6.0).
@@ -728,4 +729,101 @@ type repoDeleteIn struct {
 
 type orgDeleteIn struct {
 	Org string `json:"org" jsonschema:"Organization username/name to delete"`
+}
+
+// registerBatchTTools registers the Batch T tools (SPEC §6): forgejo_tag_list
+// (read), forgejo_tag_create / forgejo_repo_fork / forgejo_repo_update (write),
+// forgejo_tag_delete (destructive). They are grouped read -> write -> delete (S3).
+func registerBatchTTools(s *mcp.Server, client *forgejo.Client) {
+	mcp.AddTool(s, &mcp.Tool{
+		Name:        "forgejo_tag_list",
+		Title:       "List tags",
+		Description: "Lists the git tags of a repository. Read-only.",
+		Annotations: readAnnotations("List tags"),
+	}, func(ctx context.Context, _ *mcp.CallToolRequest, in tagListIn) (*mcp.CallToolResult, domain.Items[domain.Tag], error) {
+		tags, err := application.ListTags(ctx, client, in.Owner, in.Repo)
+		return nil, domain.Items[domain.Tag]{Items: tags}, err
+	})
+
+	mcp.AddTool(s, &mcp.Tool{
+		Name:        "forgejo_tag_create",
+		Title:       "Create tag",
+		Description: "Create a git tag pointing at a ref with an optional message. Creating a tag that already exists conflicts; not idempotent.",
+		Annotations: writeAnnotations("Create tag", false),
+	}, func(ctx context.Context, _ *mcp.CallToolRequest, in tagCreateIn) (*mcp.CallToolResult, domain.Tag, error) {
+		tag, err := application.CreateTag(ctx, client, in.Owner, in.Repo, domain.CreateTagInput{
+			Name: in.Name, Target: in.Target, Message: in.Message,
+		})
+		return nil, tag, err
+	})
+
+	mcp.AddTool(s, &mcp.Tool{
+		Name:        "forgejo_repo_fork",
+		Title:       "Fork repository",
+		Description: "Fork a repository into an organization or user namespace. Not idempotent.",
+		Annotations: writeAnnotations("Fork repository", false),
+	}, func(ctx context.Context, _ *mcp.CallToolRequest, in repoForkIn) (*mcp.CallToolResult, domain.Repository, error) {
+		repo, err := application.ForkRepository(ctx, client, in.Owner, in.Repo, domain.ForkRepositoryInput{
+			Organization: in.Organization, Name: in.Name, DefaultBranch: in.DefaultBranch,
+		})
+		return nil, repo, err
+	})
+
+	mcp.AddTool(s, &mcp.Tool{
+		Name:        "forgejo_repo_update",
+		Title:       "Update repository",
+		Description: "Edit an existing repository's description, website, default branch or visibility. Repeating the same edit is idempotent.",
+		Annotations: writeAnnotations("Update repository", true),
+	}, func(ctx context.Context, _ *mcp.CallToolRequest, in repoUpdateIn) (*mcp.CallToolResult, domain.Repository, error) {
+		repo, err := application.UpdateRepository(ctx, client, in.Owner, in.Repo, domain.UpdateRepositoryInput{
+			Description: in.Description, Website: in.Website, DefaultBranch: in.DefaultBranch, Private: in.Private,
+		})
+		return nil, repo, err
+	})
+
+	mcp.AddTool(s, &mcp.Tool{
+		Name:        "forgejo_tag_delete",
+		Title:       "Delete tag",
+		Description: "Delete a git tag by its name. Destructive — confirm before use.",
+		Annotations: deleteAnnotations("Delete tag"),
+	}, func(ctx context.Context, _ *mcp.CallToolRequest, in tagDeleteIn) (*mcp.CallToolResult, any, error) {
+		err := application.DeleteTag(ctx, client, in.Owner, in.Repo, in.Tag)
+		return nil, nil, err
+	})
+}
+
+type tagListIn struct {
+	Owner string `json:"owner" jsonschema:"Repository owner/namespace"`
+	Repo  string `json:"repo" jsonschema:"Repository name"`
+}
+
+type tagCreateIn struct {
+	Owner   string `json:"owner" jsonschema:"Repository owner/namespace"`
+	Repo    string `json:"repo" jsonschema:"Repository name"`
+	Name    string `json:"name" jsonschema:"Tag name"`
+	Target  string `json:"target,omitempty" jsonschema:"Ref the tag points to (e.g. main or a sha)"`
+	Message string `json:"message,omitempty" jsonschema:"Tag message/annotation"`
+}
+
+type tagDeleteIn struct {
+	Owner string `json:"owner" jsonschema:"Repository owner/namespace"`
+	Repo  string `json:"repo" jsonschema:"Repository name"`
+	Tag   string `json:"tag" jsonschema:"Tag name to delete"`
+}
+
+type repoForkIn struct {
+	Owner         string `json:"owner" jsonschema:"Repository owner/namespace"`
+	Repo          string `json:"repo" jsonschema:"Repository name"`
+	Organization  string `json:"organization,omitempty" jsonschema:"Organization to fork into; empty forks under the current user"`
+	Name          string `json:"name,omitempty" jsonschema:"Fork name; defaults to the source name"`
+	DefaultBranch string `json:"default_branch,omitempty" jsonschema:"Default branch of the fork"`
+}
+
+type repoUpdateIn struct {
+	Owner         string `json:"owner" jsonschema:"Repository owner/namespace"`
+	Repo          string `json:"repo" jsonschema:"Repository name"`
+	Description   string `json:"description,omitempty" jsonschema:"New repository description"`
+	Website       string `json:"website,omitempty" jsonschema:"New repository website"`
+	DefaultBranch string `json:"default_branch,omitempty" jsonschema:"New default branch"`
+	Private       *bool  `json:"private,omitempty" jsonschema:"Set the repository visibility (private/public)"`
 }

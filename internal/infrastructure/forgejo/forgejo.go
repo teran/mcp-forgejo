@@ -627,6 +627,50 @@ func (c *Client) DeleteOrganization(ctx context.Context, org string) error {
 	return c.do(ctx, http.MethodDelete, path, nil, nil)
 }
 
+// ListTags implements domain.TagService (repoListTags).
+func (c *Client) ListTags(ctx context.Context, owner, repo string) ([]domain.Tag, error) {
+	path := fmt.Sprintf("/api/v1/repos/%s/%s/tags", pathEscape(owner), pathEscape(repo))
+	var out []domain.Tag
+	err := c.do(ctx, http.MethodGet, path, nil, &out)
+	return out, err
+}
+
+// CreateTag implements domain.TagWriteService (repoCreateTag). A 409 conflict
+// is surfaced as KindConflict when the tag already exists.
+func (c *Client) CreateTag(ctx context.Context, owner, repo string, in domain.CreateTagInput) (domain.Tag, error) {
+	path := fmt.Sprintf("/api/v1/repos/%s/%s/tags", pathEscape(owner), pathEscape(repo))
+	var out domain.Tag
+	err := c.doJSON(ctx, http.MethodPost, path, in, &out)
+	return out, err
+}
+
+// DeleteTag implements domain.TagDeleteService (repoDeleteTag). The endpoint
+// returns 204 on success.
+func (c *Client) DeleteTag(ctx context.Context, owner, repo, tag string) error {
+	path := fmt.Sprintf("/api/v1/repos/%s/%s/tags/%s", pathEscape(owner), pathEscape(repo), pathEscape(tag))
+	return c.do(ctx, http.MethodDelete, path, nil, nil)
+}
+
+// ForkRepository implements domain.RepositoryForkService (repoFork). Empty
+// fields are omitted from the body so Forgejo applies its defaults; a 409 is
+// surfaced as KindConflict when the fork name already exists.
+func (c *Client) ForkRepository(ctx context.Context, owner, repo string, in domain.ForkRepositoryInput) (domain.Repository, error) {
+	path := fmt.Sprintf("/api/v1/repos/%s/%s/forks", pathEscape(owner), pathEscape(repo))
+	var out domain.Repository
+	err := c.doJSON(ctx, http.MethodPost, path, in, &out)
+	return out, err
+}
+
+// UpdateRepository implements domain.RepositoryUpdateService (repoEdit). The
+// edit is idempotent: repeating the same body has no extra effect. Private is a
+// pointer so an omitted value leaves the visibility untouched.
+func (c *Client) UpdateRepository(ctx context.Context, owner, repo string, in domain.UpdateRepositoryInput) (domain.Repository, error) {
+	path := fmt.Sprintf("/api/v1/repos/%s/%s", pathEscape(owner), pathEscape(repo))
+	var out domain.Repository
+	err := c.doJSON(ctx, http.MethodPatch, path, in, &out)
+	return out, err
+}
+
 // repoSearchResponse is the wire envelope of the Forgejo repo search endpoint.
 type repoSearchResponse struct {
 	OK   bool                `json:"ok"`

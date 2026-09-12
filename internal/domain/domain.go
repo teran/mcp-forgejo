@@ -96,6 +96,40 @@ type Repository struct {
 	UpdatedAt     string `json:"updated_at"`
 }
 
+// Tag is a git tag of a repository.
+type Tag struct {
+	ID         int64  `json:"id"`
+	Name       string `json:"name"`
+	SHA        string `json:"sha"`
+	Message    string `json:"message"`
+	TarballURL string `json:"tarball_url"`
+	ZipballURL string `json:"zipball_url"`
+}
+
+// CreateTagInput carries the fields needed to create a git tag.
+type CreateTagInput struct {
+	Name    string `json:"tag_name"`
+	Target  string `json:"target,omitempty"`
+	Message string `json:"message,omitempty"`
+}
+
+// ForkRepositoryInput carries the fields of a repository fork. Empty fields
+// are omitted from the request body so Forgejo applies its defaults.
+type ForkRepositoryInput struct {
+	Organization  string `json:"organization,omitempty"`
+	Name          string `json:"name,omitempty"`
+	DefaultBranch string `json:"default_branch,omitempty"`
+}
+
+// UpdateRepositoryInput carries the fields of an in-place repository edit.
+// Private is a pointer so an omitted value leaves the visibility untouched.
+type UpdateRepositoryInput struct {
+	Description   string `json:"description,omitempty"`
+	Website       string `json:"website,omitempty"`
+	DefaultBranch string `json:"default_branch,omitempty"`
+	Private       *bool  `json:"private,omitempty"`
+}
+
 // FileEntry is a single entry (file or directory) in a repository listing.
 type FileEntry struct {
 	Name        string `json:"name"`
@@ -597,4 +631,35 @@ type ReleaseDeleteService interface {
 type RepositoryDeleteService interface {
 	// DeleteRepository deletes a repository by owner+name.
 	DeleteRepository(ctx context.Context, owner, repo string) error
+}
+
+// TagService lists the git tags of a repository.
+type TagService interface {
+	// ListTags lists the tags of a repository.
+	ListTags(ctx context.Context, owner, repo string) ([]Tag, error)
+}
+
+// TagWriteService creates git tags.
+type TagWriteService interface {
+	// CreateTag creates a tag pointing at target (a ref) with an optional message.
+	CreateTag(ctx context.Context, owner, repo string, in CreateTagInput) (Tag, error)
+}
+
+// TagDeleteService deletes a git tag.
+type TagDeleteService interface {
+	// DeleteTag deletes a tag by its name.
+	DeleteTag(ctx context.Context, owner, repo, tag string) error
+}
+
+// RepositoryForkService forks a repository.
+type RepositoryForkService interface {
+	// ForkRepository forks a repository into an organization or user namespace.
+	ForkRepository(ctx context.Context, owner, repo string, in ForkRepositoryInput) (Repository, error)
+}
+
+// RepositoryUpdateService edits a repository in place. Repeating the same edit
+// is idempotent.
+type RepositoryUpdateService interface {
+	// UpdateRepository edits a repository (description/website/default_branch/private).
+	UpdateRepository(ctx context.Context, owner, repo string, in UpdateRepositoryInput) (Repository, error)
 }
