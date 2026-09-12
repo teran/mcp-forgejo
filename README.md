@@ -155,6 +155,26 @@ and `SPEC.md` §8 B2/B5).
   should belong to a **dedicated low-privilege Forgejo user**. See `SPEC.md` §5
   (S7).
 
+### Token: env var → bearer header
+
+The same PAT is used in **two distinct roles** — do not confuse them:
+
+| Role | When | How |
+|------|------|-----|
+| **Obtain** (env var) | **Startup / configuration** | The server reads the PAT from the **`FORGEJO_TOKEN`** environment variable (required; startup fails if empty). |
+| **Present** (bearer header) | **Every outbound request to Forgejo** | The server sends the token as an **`Authorization: token <PAT>`** header on every call it makes to the Forgejo REST API (see `forgejo.go`). |
+
+Two important clarifications:
+
+1. **Inbound (MCP clients):** no bearer header is expected from MCP clients —
+   the server does **not** authenticate incoming requests. Protecting the
+   HTTP/SSE listener is the reverse proxy's job (see above). The `Authorization`
+   header is strictly **outbound**, used only when the server calls Forgejo.
+2. **Not OAuth2:** the `Bearer` scheme is **not** used; Forgejo's PAT mechanism
+   is the `token` scheme (`Authorization: token <PAT>`). The token is **never**
+   logged, leaked in error messages, or echoed in tool outputs (it is redacted
+   to `[REDACTED]`).
+
 ## Development
 
 ```bash
