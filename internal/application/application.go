@@ -419,3 +419,39 @@ func SetIssueLabels(ctx context.Context, svc domain.IssueLabelsService, owner, r
 	}
 	return svc.SetIssueLabels(ctx, owner, repo, index, labelIDs)
 }
+
+// GetUser returns a user by username, or the current user when username is
+// empty (passthrough; no validation is applied).
+func GetUser(ctx context.Context, svc domain.UserService, username string) (domain.User, error) {
+	return svc.GetUser(ctx, username)
+}
+
+// SearchUsers searches users by query string (passthrough).
+func SearchUsers(ctx context.Context, svc domain.UserSearchService, q string) ([]domain.User, error) {
+	return svc.SearchUsers(ctx, q)
+}
+
+// UploadReleaseAsset uploads content as a named attachment to a release. A
+// non-positive release ID, empty filename or empty content is rejected before
+// the service is invoked (SPEC 6.2).
+func UploadReleaseAsset(ctx context.Context, svc domain.ReleaseAssetService, owner, repo string, releaseID int64, filename string, content []byte) (domain.ReleaseAsset, error) {
+	if releaseID <= 0 {
+		return domain.ReleaseAsset{}, validationError("release id must be positive")
+	}
+	if strings.TrimSpace(filename) == "" {
+		return domain.ReleaseAsset{}, validationError("asset filename is required")
+	}
+	if len(content) == 0 {
+		return domain.ReleaseAsset{}, validationError("asset content is required")
+	}
+	return svc.UploadReleaseAsset(ctx, owner, repo, releaseID, filename, content)
+}
+
+// GetBranch returns a single branch by name. An empty branch name is rejected
+// before the service is invoked.
+func GetBranch(ctx context.Context, svc domain.BranchReadService, owner, repo, branch string) (domain.Branch, error) {
+	if strings.TrimSpace(branch) == "" {
+		return domain.Branch{}, validationError("branch name is required")
+	}
+	return svc.GetBranch(ctx, owner, repo, branch)
+}

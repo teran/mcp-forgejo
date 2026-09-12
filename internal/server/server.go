@@ -5,6 +5,7 @@ package server
 
 import (
 	"context"
+	"encoding/base64"
 	"log/slog"
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
@@ -61,6 +62,7 @@ func registerTools(s *mcp.Server, client *forgejo.Client) {
 	registerDeleteTools(s, client)
 	registerBatchTTools(s, client)
 	registerBatchMTools(s, client)
+	registerBatchUTools(s, client)
 }
 
 // readAnnotations builds the annotation set for read-only tools (SPEC 6.0).
@@ -930,6 +932,77 @@ func registerBatchMTools(s *mcp.Server, client *forgejo.Client) {
 		err := application.SetIssueLabels(ctx, client, in.Owner, in.Repo, in.Index, in.Labels)
 		return nil, nil, err
 	})
+}
+
+// registerBatchUTools registers the Batch U tools (SPEC §6): forgejo_user_get,
+// forgejo_user_list, forgejo_release_asset_upload, forgejo_branch_get, grouped
+// read -> write.
+func registerBatchUTools(s *mcp.Server, client *forgejo.Client) {
+	mcp.AddTool(s, &mcp.Tool{
+		Name:        "forgejo_user_get",
+		Title:       "Get user",
+		Description: "Returns a user by username; when username is omitted returns the current authenticated user. Read-only.",
+		Annotations: readAnnotations("Get user"),
+	}, func(ctx context.Context, _ *mcp.CallToolRequest, in userGetIn) (*mcp.CallToolResult, domain.User, error) {
+		u, err := application.GetUser(ctx, client, in.Username)
+		return nil, u, err
+	})
+
+	mcp.AddTool(s, &mcp.Tool{
+		Name:        "forgejo_user_list",
+		Title:       "Search users",
+		Description: "Search Forgejo users by a query string. Returns matching users. Read-only.",
+		Annotations: readAnnotations("Search users"),
+	}, func(ctx context.Context, _ *mcp.CallToolRequest, in userSearchIn) (*mcp.CallToolResult, domain.Items[domain.User], error) {
+		users, err := application.SearchUsers(ctx, client, in.Q)
+		return nil, domain.Items[domain.User]{Items: users}, err
+	})
+
+	mcp.AddTool(s, &mcp.Tool{
+		Name:        "forgejo_branch_get",
+		Title:       "Get branch",
+		Description: "Returns a single branch of a repository by name. Read-only.",
+		Annotations: readAnnotations("Get branch"),
+	}, func(ctx context.Context, _ *mcp.CallToolRequest, in branchGetIn) (*mcp.CallToolResult, domain.Branch, error) {
+		b, err := application.GetBranch(ctx, client, in.Owner, in.Repo, in.Branch)
+		return nil, b, err
+	})
+
+	mcp.AddTool(s, &mcp.Tool{
+		Name:        "forgejo_release_asset_upload",
+		Title:       "Upload release asset",
+		Description: "Upload content (base64) as a named file attachment to a release. Not idempotent: each call creates a new asset.",
+		Annotations: writeAnnotations("Upload release asset", false),
+	}, func(ctx context.Context, _ *mcp.CallToolRequest, in releaseAssetUploadIn) (*mcp.CallToolResult, domain.ReleaseAsset, error) {
+		content, err := base64.StdEncoding.DecodeString(in.Content)
+		if err != nil {
+			return nil, domain.ReleaseAsset{}, domain.NewForgejoError(domain.KindValidation, "invalid base64 asset content")
+		}
+		asset, err := application.UploadReleaseAsset(ctx, client, in.Owner, in.Repo, in.ReleaseID, in.Filename, content)
+		return nil, asset, err
+	})
+}
+
+type userGetIn struct {
+	Username string `json:"username,omitempty" jsonschema:"Username to fetch; omitted returns the current user"`
+}
+
+type userSearchIn struct {
+	Q string `json:"q" jsonschema:"Search query"`
+}
+
+type releaseAssetUploadIn struct {
+	Owner     string `json:"owner" jsonschema:"Repository owner/namespace"`
+	Repo      string `json:"repo" jsonschema:"Repository name"`
+	ReleaseID int64  `json:"release_id" jsonschema:"Release ID"`
+	Filename  string `json:"filename" jsonschema:"Asset filename"`
+	Content   string `json:"content" jsonschema:"Asset content, base64-encoded"`
+}
+
+type branchGetIn struct {
+	Owner  string `json:"owner" jsonschema:"Repository owner/namespace"`
+	Repo   string `json:"repo" jsonschema:"Repository name"`
+	Branch string `json:"branch" jsonschema:"Branch name"`
 }
 
 type milestoneListIn struct {

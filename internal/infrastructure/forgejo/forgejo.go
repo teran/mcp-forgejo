@@ -11,6 +11,7 @@
 package forgejo
 
 import (
+	"bytes"
 	"context"
 	"encoding/base64"
 	"encoding/json"
@@ -263,6 +264,50 @@ func (c *Client) ListBranches(ctx context.Context, owner, repo string) ([]domain
 		})
 	}
 	return out, nil
+}
+
+// GetBranch implements domain.BranchReadService (repoGetBranch). The commit the
+// branch points to is nested under "commit.id", flattened into CommitSHA.
+func (c *Client) GetBranch(ctx context.Context, owner, repo, branch string) (domain.Branch, error) {
+	path := fmt.Sprintf("/api/v1/repos/%s/%s/branches/%s", pathEscape(owner), pathEscape(repo), pathEscape(branch))
+	var wire branchWire
+	if err := c.do(ctx, http.MethodGet, path, nil, &wire); err != nil {
+		return domain.Branch{}, err
+	}
+	return domain.Branch{
+		Name:      wire.Name,
+		Protected: wire.Protected,
+		Default:   wire.Default,
+		CommitSHA: wire.Commit.ID,
+	}, nil
+}
+
+// GetUser implements domain.UserService (userGet). An empty username returns
+// the current authenticated user.
+func (c *Client) GetUser(ctx context.Context, username string) (domain.User, error) {
+	path := "/api/v1/user"
+	if username != "" {
+		path = fmt.Sprintf("/api/v1/users/%s", pathEscape(username))
+	}
+	var out domain.User
+	err := c.do(ctx, http.MethodGet, path, nil, &out)
+	return out, err
+}
+
+// SearchUsers implements domain.UserSearchService (userSearch). The Forgejo
+// search endpoint wraps the result list in a {"ok":true,"data":[...]} envelope,
+// so the client unwraps ".data" before returning. An empty query sends no query
+// parameter.
+func (c *Client) SearchUsers(ctx context.Context, q string) ([]domain.User, error) {
+	qp := url.Values{}
+	if q != "" {
+		qp.Set("q", q)
+	}
+	var wrapped userSearchResponse
+	if err := c.do(ctx, http.MethodGet, "/api/v1/users/search", qp, &wrapped); err != nil {
+		return nil, err
+	}
+	return wrapped.Data, nil
 }
 
 // ListIssues implements domain.IssueListService.
@@ -568,6 +613,38 @@ func (c *Client) CreateRelease(ctx context.Context, in domain.CreateReleaseInput
 	return out, err
 }
 
+// UploadReleaseAsset implements domain.ReleaseAssetService
+// (repoCreateReleaseAttachment). The asset is sent as a multipart form with a
+// "name" field and the file content in the "attachment" field.
+func (c *Client) UploadReleaseAsset(ctx context.Context, owner, repo string, releaseID int64, filename string, content []byte) (domain.ReleaseAsset, error) {
+	path := fmt.Sprintf("/api/v1/repos/%s/%s/releases/%s/assets", pathEscape(owner), pathEscape(repo), strconv.FormatInt(releaseID, 10))
+	req := c.resty.R().
+		SetContext(ctx).
+		SetResponseBodyUnlimitedReads(true).
+		SetMultipartField("attachment", filename, "application/octet-stream", bytes.NewReader(content)).
+		SetFormData(map[string]string{"name": filename})
+	if id, ok := domain.RequestIDFromContext(ctx); ok && id != "" {
+		req = req.SetHeader("X-Request-ID", id)
+	}
+
+	start := time.Now()
+	resp, err := req.Execute(http.MethodPost, path)
+	c.logUpstream(ctx, http.MethodPost, path, int64(len(content)), int64(len(resp.Bytes())), resp.StatusCode(), time.Since(start))
+	if err != nil {
+		return domain.ReleaseAsset{}, domain.NewForgejoError(domain.KindTransient, domain.Redact(fmt.Sprintf("request failed: %v", err), c.token))
+	}
+
+	if resp.StatusCode() < 200 || resp.StatusCode() >= 300 {
+		return domain.ReleaseAsset{}, mapStatusError(resp.StatusCode(), string(resp.Bytes()), c.token)
+	}
+
+	var out domain.ReleaseAsset
+	if err := json.Unmarshal(resp.Bytes(), &out); err != nil {
+		return domain.ReleaseAsset{}, domain.NewForgejoError(domain.KindValidation, domain.Redact(fmt.Sprintf("failed to decode Forgejo response: %v", err), c.token))
+	}
+	return out, nil
+}
+
 // DeleteFile implements domain.FileDeleteService (repoDeleteFile). The request
 // must carry the blob SHA of the current version so the delete is
 // conflict-checked; the response maps onto a domain.FileResult.
@@ -758,6 +835,12 @@ func (c *Client) SetIssueLabels(ctx context.Context, owner, repo string, index i
 type repoSearchResponse struct {
 	OK   bool                `json:"ok"`
 	Data []domain.Repository `json:"data"`
+}
+
+// userSearchResponse is the wire envelope of the Forgejo user search endpoint.
+type userSearchResponse struct {
+	OK   bool          `json:"ok"`
+	Data []domain.User `json:"data"`
 }
 
 // commitWire is the nested wire shape of a Forgejo commit list item.

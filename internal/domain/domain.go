@@ -170,6 +170,15 @@ type User struct {
 	AvatarURL string `json:"avatar_url"`
 }
 
+// ReleaseAsset is a file attached to a release.
+type ReleaseAsset struct {
+	ID                 int64  `json:"id"`
+	Name               string `json:"name"`
+	Size               int64  `json:"size"`
+	DownloadURL        string `json:"download_url"`
+	BrowserDownloadURL string `json:"browser_download_url"`
+}
+
 // Label is a Forgejo issue label.
 type Label struct {
 	ID          int64  `json:"id"`
@@ -750,4 +759,32 @@ type IssueLabelsService interface {
 	// SetIssueLabels replaces the label set of an issue. Repeating the same set
 	// is idempotent.
 	SetIssueLabels(ctx context.Context, owner, repo string, index int64, labelIDs []int64) error
+}
+
+// UserService retrieves a single user. An empty username returns the current
+// authenticated user.
+type UserService interface {
+	// GetUser returns a user by username, or the current user when username is
+	// empty.
+	GetUser(ctx context.Context, username string) (User, error)
+}
+
+// UserSearchService searches users by a query string.
+type UserSearchService interface {
+	// SearchUsers searches users by query q.
+	SearchUsers(ctx context.Context, q string) ([]User, error)
+}
+
+// ReleaseAssetService uploads a file attachment to a release.
+type ReleaseAssetService interface {
+	// UploadReleaseAsset uploads content as a named attachment to a release.
+	UploadReleaseAsset(ctx context.Context, owner, repo string, releaseID int64, filename string, content []byte) (ReleaseAsset, error)
+}
+
+// BranchReadService reads a single branch of a repository. It is kept separate
+// from BranchService (which lists branches) so a caller can depend on exactly
+// the read it needs.
+type BranchReadService interface {
+	// GetBranch returns a single branch by name.
+	GetBranch(ctx context.Context, owner, repo, branch string) (Branch, error)
 }
