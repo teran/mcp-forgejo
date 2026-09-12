@@ -24,7 +24,7 @@ before:
 
 builds:
   # The main server binary — static, CGO disabled, for the runtime image.
-  - id: server
+  - id: mcp-forgejo
     main: ./cmd/mcp-forgejo
     binary: mcp-forgejo
     env:
