@@ -103,9 +103,9 @@ func registerRepoTools(s *mcp.Server, client *forgejo.Client) {
 		Title:       "List directory contents",
 		Description: "Lists the entries (type/sha/size) of a directory at path+ref. Read-only.",
 		Annotations: readAnnotations("List directory contents"),
-	}, func(ctx context.Context, _ *mcp.CallToolRequest, in repoListContentsIn) (*mcp.CallToolResult, []domain.FileEntry, error) {
+	}, func(ctx context.Context, _ *mcp.CallToolRequest, in repoListContentsIn) (*mcp.CallToolResult, domain.Items[domain.FileEntry], error) {
 		entries, err := application.ListContents(ctx, client, in.Owner, in.Repo, in.Path, in.Ref, in.Page, in.Limit)
-		return nil, entries, err
+		return nil, domain.Items[domain.FileEntry]{Items: entries}, err
 	})
 
 	mcp.AddTool(s, &mcp.Tool{
@@ -126,9 +126,9 @@ func registerOrgTools(s *mcp.Server, client *forgejo.Client) {
 		Title:       "List my organizations",
 		Description: "Lists the organizations the current user belongs to. Read-only.",
 		Annotations: readAnnotations("List my organizations"),
-	}, func(ctx context.Context, _ *mcp.CallToolRequest, _ orgListIn) (*mcp.CallToolResult, []domain.Organization, error) {
+	}, func(ctx context.Context, _ *mcp.CallToolRequest, _ orgListIn) (*mcp.CallToolResult, domain.Items[domain.Organization], error) {
 		orgs, err := application.ListOrganizations(ctx, client)
-		return nil, orgs, err
+		return nil, domain.Items[domain.Organization]{Items: orgs}, err
 	})
 }
 
@@ -154,9 +154,9 @@ func registerBatchAReadTools(s *mcp.Server, client *forgejo.Client) {
 		Title:       "Search repositories",
 		Description: "Search the Forgejo instance by q, topic, sort, order and an optional private filter. Returns matching repositories. Read-only.",
 		Annotations: readAnnotations("Search repositories"),
-	}, func(ctx context.Context, _ *mcp.CallToolRequest, in repoSearchIn) (*mcp.CallToolResult, []domain.Repository, error) {
+	}, func(ctx context.Context, _ *mcp.CallToolRequest, in repoSearchIn) (*mcp.CallToolResult, domain.Items[domain.Repository], error) {
 		repos, err := application.SearchRepos(ctx, client, in.Q, in.Topic, in.Sort, in.Order, in.Private)
-		return nil, repos, err
+		return nil, domain.Items[domain.Repository]{Items: repos}, err
 	})
 
 	mcp.AddTool(s, &mcp.Tool{
@@ -174,9 +174,9 @@ func registerBatchAReadTools(s *mcp.Server, client *forgejo.Client) {
 		Title:       "List commits",
 		Description: "Lists commits of a repository branch with pagination. Read-only.",
 		Annotations: readAnnotations("List commits"),
-	}, func(ctx context.Context, _ *mcp.CallToolRequest, in commitListIn) (*mcp.CallToolResult, []domain.Commit, error) {
+	}, func(ctx context.Context, _ *mcp.CallToolRequest, in commitListIn) (*mcp.CallToolResult, domain.Items[domain.Commit], error) {
 		commits, err := application.ListCommits(ctx, client, in.Owner, in.Repo, in.Branch, in.Page, in.Limit)
-		return nil, commits, err
+		return nil, domain.Items[domain.Commit]{Items: commits}, err
 	})
 
 	mcp.AddTool(s, &mcp.Tool{
@@ -184,9 +184,9 @@ func registerBatchAReadTools(s *mcp.Server, client *forgejo.Client) {
 		Title:       "List branches",
 		Description: "Lists the branches of a repository. Read-only.",
 		Annotations: readAnnotations("List branches"),
-	}, func(ctx context.Context, _ *mcp.CallToolRequest, in branchListIn) (*mcp.CallToolResult, []domain.Branch, error) {
+	}, func(ctx context.Context, _ *mcp.CallToolRequest, in branchListIn) (*mcp.CallToolResult, domain.Items[domain.Branch], error) {
 		branches, err := application.ListBranches(ctx, client, in.Owner, in.Repo)
-		return nil, branches, err
+		return nil, domain.Items[domain.Branch]{Items: branches}, err
 	})
 
 	mcp.AddTool(s, &mcp.Tool{
@@ -194,9 +194,9 @@ func registerBatchAReadTools(s *mcp.Server, client *forgejo.Client) {
 		Title:       "List issues",
 		Description: "Lists issues filtered by state (open/closed/all) with pagination. Read-only.",
 		Annotations: readAnnotations("List issues"),
-	}, func(ctx context.Context, _ *mcp.CallToolRequest, in issueListIn) (*mcp.CallToolResult, []domain.Issue, error) {
+	}, func(ctx context.Context, _ *mcp.CallToolRequest, in issueListIn) (*mcp.CallToolResult, domain.Items[domain.Issue], error) {
 		issues, err := application.ListIssues(ctx, client, in.Owner, in.Repo, in.State, in.Page, in.Limit)
-		return nil, issues, err
+		return nil, domain.Items[domain.Issue]{Items: issues}, err
 	})
 
 	mcp.AddTool(s, &mcp.Tool{
@@ -204,9 +204,9 @@ func registerBatchAReadTools(s *mcp.Server, client *forgejo.Client) {
 		Title:       "List pull requests",
 		Description: "Lists pull requests filtered by state (open/closed/all) with pagination. Read-only.",
 		Annotations: readAnnotations("List pull requests"),
-	}, func(ctx context.Context, _ *mcp.CallToolRequest, in pullListIn) (*mcp.CallToolResult, []domain.PullRequest, error) {
+	}, func(ctx context.Context, _ *mcp.CallToolRequest, in pullListIn) (*mcp.CallToolResult, domain.Items[domain.PullRequest], error) {
 		prs, err := application.ListPullRequests(ctx, client, in.Owner, in.Repo, in.State, in.Page, in.Limit)
-		return nil, prs, err
+		return nil, domain.Items[domain.PullRequest]{Items: prs}, err
 	})
 
 	mcp.AddTool(s, &mcp.Tool{
@@ -224,9 +224,9 @@ func registerBatchAReadTools(s *mcp.Server, client *forgejo.Client) {
 		Title:       "List releases",
 		Description: "Lists the releases of a repository, or fetches the latest release when latest is true. Read-only.",
 		Annotations: readAnnotations("List releases"),
-	}, func(ctx context.Context, _ *mcp.CallToolRequest, in releaseListIn) (*mcp.CallToolResult, []domain.Release, error) {
+	}, func(ctx context.Context, _ *mcp.CallToolRequest, in releaseListIn) (*mcp.CallToolResult, domain.Items[domain.Release], error) {
 		releases, err := application.ListReleases(ctx, client, in.Owner, in.Repo, in.Latest, in.Page, in.Limit)
-		return nil, releases, err
+		return nil, domain.Items[domain.Release]{Items: releases}, err
 	})
 }
 

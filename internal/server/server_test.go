@@ -56,6 +56,8 @@ func mockForgejo() http.Handler {
 			_, _ = w.Write([]byte(`[{"sha":"abc","commit":{"message":"fix build","author":{"name":"Alice","date":"2024-01-01T00:00:00Z"}},"html_url":"https://x/abc"}]`))
 		case "/api/v1/repos/acme/demo/branches":
 			_, _ = w.Write([]byte(`[{"name":"main","protected":true,"default":true,"commit":{"id":"c1"}}]`))
+		case "/api/v1/repos/acme/empty/branches":
+			_, _ = w.Write([]byte(`[]`))
 		case "/api/v1/repos/acme/demo/issues":
 			_, _ = w.Write([]byte(`[{"id":1,"number":3,"title":"Issue three","body":"b","state":"open"}]`))
 		case "/api/v1/repos/acme/demo/pulls":
@@ -212,9 +214,9 @@ func TestRepoGetTool(t *testing.T) {
 
 func TestRepoListContentsTool(t *testing.T) {
 	cs, _ := setup(t)
-	var entries []domain.FileEntry
+	var entries domain.Items[domain.FileEntry]
 	callTool(t, cs, "forgejo_repo_list_contents", map[string]any{"owner": "acme", "repo": "demo", "path": ""}, &entries)
-	if len(entries) != 2 || entries[0].Name != "src" || entries[1].Type != "file" {
+	if len(entries.Items) != 2 || entries.Items[0].Name != "src" || entries.Items[1].Type != "file" {
 		t.Errorf("entries = %+v", entries)
 	}
 }
@@ -230,9 +232,9 @@ func TestFileGetTool(t *testing.T) {
 
 func TestOrgListTool(t *testing.T) {
 	cs, _ := setup(t)
-	var orgs []domain.Organization
+	var orgs domain.Items[domain.Organization]
 	callTool(t, cs, "forgejo_org_list", map[string]any{}, &orgs)
-	if len(orgs) != 1 || orgs[0].Username != "acme" {
+	if len(orgs.Items) != 1 || orgs.Items[0].Username != "acme" {
 		t.Errorf("orgs = %+v", orgs)
 	}
 }
@@ -251,9 +253,9 @@ func TestIssueGetTool(t *testing.T) {
 
 func TestRepoSearchTool(t *testing.T) {
 	cs, _ := setup(t)
-	var repos []domain.Repository
+	var repos domain.Items[domain.Repository]
 	callTool(t, cs, "forgejo_repo_search", map[string]any{"q": "go", "private": true}, &repos)
-	if len(repos) != 1 || repos[0].Name != "demo" || repos[0].FullName != "acme/demo" || !repos[0].Private {
+	if len(repos.Items) != 1 || repos.Items[0].Name != "demo" || repos.Items[0].FullName != "acme/demo" || !repos.Items[0].Private {
 		t.Errorf("repos = %+v", repos)
 	}
 }
@@ -269,36 +271,36 @@ func TestDiffGetTool(t *testing.T) {
 
 func TestCommitListTool(t *testing.T) {
 	cs, _ := setup(t)
-	var commits []domain.Commit
+	var commits domain.Items[domain.Commit]
 	callTool(t, cs, "forgejo_commit_list", map[string]any{"owner": "acme", "repo": "demo", "branch": "main"}, &commits)
-	if len(commits) != 1 || commits[0].SHA != "abc" || commits[0].Message != "fix build" || commits[0].Author != "Alice" {
+	if len(commits.Items) != 1 || commits.Items[0].SHA != "abc" || commits.Items[0].Message != "fix build" || commits.Items[0].Author != "Alice" {
 		t.Errorf("commits = %+v", commits)
 	}
 }
 
 func TestBranchListTool(t *testing.T) {
 	cs, _ := setup(t)
-	var branches []domain.Branch
+	var branches domain.Items[domain.Branch]
 	callTool(t, cs, "forgejo_branch_list", map[string]any{"owner": "acme", "repo": "demo"}, &branches)
-	if len(branches) != 1 || branches[0].Name != "main" || !branches[0].Protected || branches[0].CommitSHA != "c1" {
+	if len(branches.Items) != 1 || branches.Items[0].Name != "main" || !branches.Items[0].Protected || branches.Items[0].CommitSHA != "c1" {
 		t.Errorf("branches = %+v", branches)
 	}
 }
 
 func TestIssueListTool(t *testing.T) {
 	cs, _ := setup(t)
-	var issues []domain.Issue
+	var issues domain.Items[domain.Issue]
 	callTool(t, cs, "forgejo_issue_list", map[string]any{"owner": "acme", "repo": "demo", "state": "open"}, &issues)
-	if len(issues) != 1 || issues[0].Number != 3 || issues[0].Title != "Issue three" || issues[0].State != "open" {
+	if len(issues.Items) != 1 || issues.Items[0].Number != 3 || issues.Items[0].Title != "Issue three" || issues.Items[0].State != "open" {
 		t.Errorf("issues = %+v", issues)
 	}
 }
 
 func TestPullListTool(t *testing.T) {
 	cs, _ := setup(t)
-	var prs []domain.PullRequest
+	var prs domain.Items[domain.PullRequest]
 	callTool(t, cs, "forgejo_pull_list", map[string]any{"owner": "acme", "repo": "demo", "state": "open"}, &prs)
-	if len(prs) != 1 || prs[0].Number != 5 || prs[0].Title != "PR five" || prs[0].State != "open" {
+	if len(prs.Items) != 1 || prs.Items[0].Number != 5 || prs.Items[0].Title != "PR five" || prs.Items[0].State != "open" {
 		t.Errorf("prs = %+v", prs)
 	}
 }
@@ -320,18 +322,18 @@ func TestPullGetTool(t *testing.T) {
 
 func TestReleaseListTool(t *testing.T) {
 	cs, _ := setup(t)
-	var releases []domain.Release
+	var releases domain.Items[domain.Release]
 	callTool(t, cs, "forgejo_release_list", map[string]any{"owner": "acme", "repo": "demo"}, &releases)
-	if len(releases) != 1 || releases[0].TagName != "v1" || releases[0].Name != "V1" {
+	if len(releases.Items) != 1 || releases.Items[0].TagName != "v1" || releases.Items[0].Name != "V1" {
 		t.Errorf("releases = %+v", releases)
 	}
 }
 
 func TestReleaseListLatestTool(t *testing.T) {
 	cs, _ := setup(t)
-	var releases []domain.Release
+	var releases domain.Items[domain.Release]
 	callTool(t, cs, "forgejo_release_list", map[string]any{"owner": "acme", "repo": "demo", "latest": true}, &releases)
-	if len(releases) != 1 || releases[0].TagName != "v2" || releases[0].Name != "V2" {
+	if len(releases.Items) != 1 || releases.Items[0].TagName != "v2" || releases.Items[0].Name != "V2" {
 		t.Errorf("releases = %+v", releases)
 	}
 }

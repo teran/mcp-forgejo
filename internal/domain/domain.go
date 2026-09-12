@@ -60,6 +60,14 @@ func Redact(s, secret string) string {
 	return strings.ReplaceAll(s, secret, "[REDACTED]")
 }
 
+// Items wraps a slice of results so that a list tool's structuredContent is a
+// JSON *object* ({ "items": [...] }) rather than a bare array. MCP clients
+// require structuredContent to be a record, so list tools must not return a
+// top-level array (regression for "expected record, received array").
+type Items[T any] struct {
+	Items []T `json:"items"`
+}
+
 // Owner is a repository owner (user or organization).
 type Owner struct {
 	ID        int64  `json:"id"`
