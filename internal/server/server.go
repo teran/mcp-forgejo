@@ -60,6 +60,7 @@ func registerTools(s *mcp.Server, client *forgejo.Client) {
 	registerWriteTools(s, client)
 	registerDeleteTools(s, client)
 	registerBatchTTools(s, client)
+	registerBatchMTools(s, client)
 }
 
 // readAnnotations builds the annotation set for read-only tools (SPEC 6.0).
@@ -826,4 +827,171 @@ type repoUpdateIn struct {
 	Website       string `json:"website,omitempty" jsonschema:"New repository website"`
 	DefaultBranch string `json:"default_branch,omitempty" jsonschema:"New default branch"`
 	Private       *bool  `json:"private,omitempty" jsonschema:"Set the repository visibility (private/public)"`
+}
+
+// registerBatchMTools registers the Batch M tools (SPEC §6): milestone and
+// label list/create/update/delete plus issue_set_labels. They are grouped read
+// -> write -> delete (S3).
+func registerBatchMTools(s *mcp.Server, client *forgejo.Client) {
+	mcp.AddTool(s, &mcp.Tool{
+		Name:        "forgejo_milestone_list",
+		Title:       "List milestones",
+		Description: "Lists the milestones of a repository. Read-only.",
+		Annotations: readAnnotations("List milestones"),
+	}, func(ctx context.Context, _ *mcp.CallToolRequest, in milestoneListIn) (*mcp.CallToolResult, domain.Items[domain.Milestone], error) {
+		ms, err := application.ListMilestones(ctx, client, in.Owner, in.Repo)
+		return nil, domain.Items[domain.Milestone]{Items: ms}, err
+	})
+
+	mcp.AddTool(s, &mcp.Tool{
+		Name:        "forgejo_milestone_create",
+		Title:       "Create milestone",
+		Description: "Create a milestone with a title, description and due date. Creating a title that already exists conflicts; not idempotent.",
+		Annotations: writeAnnotations("Create milestone", false),
+	}, func(ctx context.Context, _ *mcp.CallToolRequest, in milestoneCreateIn) (*mcp.CallToolResult, domain.Milestone, error) {
+		m, err := application.CreateMilestone(ctx, client, in.Owner, in.Repo, domain.CreateMilestoneInput{
+			Title: in.Title, Description: in.Description, DueOn: in.DueOn,
+		})
+		return nil, m, err
+	})
+
+	mcp.AddTool(s, &mcp.Tool{
+		Name:        "forgejo_milestone_update",
+		Title:       "Update milestone",
+		Description: "Edit an existing milestone's title, description, state or due date. Repeating the same edit is idempotent.",
+		Annotations: writeAnnotations("Update milestone", true),
+	}, func(ctx context.Context, _ *mcp.CallToolRequest, in milestoneUpdateIn) (*mcp.CallToolResult, domain.Milestone, error) {
+		m, err := application.UpdateMilestone(ctx, client, in.Owner, in.Repo, in.ID, domain.UpdateMilestoneInput{
+			Title: in.Title, Description: in.Description, State: in.State, DueOn: in.DueOn,
+		})
+		return nil, m, err
+	})
+
+	mcp.AddTool(s, &mcp.Tool{
+		Name:        "forgejo_milestone_delete",
+		Title:       "Delete milestone",
+		Description: "Delete a milestone by its ID. Destructive — confirm before use.",
+		Annotations: deleteAnnotations("Delete milestone"),
+	}, func(ctx context.Context, _ *mcp.CallToolRequest, in milestoneDeleteIn) (*mcp.CallToolResult, any, error) {
+		err := application.DeleteMilestone(ctx, client, in.Owner, in.Repo, in.ID)
+		return nil, nil, err
+	})
+
+	mcp.AddTool(s, &mcp.Tool{
+		Name:        "forgejo_label_list",
+		Title:       "List labels",
+		Description: "Lists the labels of a repository. Read-only.",
+		Annotations: readAnnotations("List labels"),
+	}, func(ctx context.Context, _ *mcp.CallToolRequest, in labelListIn) (*mcp.CallToolResult, domain.Items[domain.Label], error) {
+		ls, err := application.ListLabels(ctx, client, in.Owner, in.Repo)
+		return nil, domain.Items[domain.Label]{Items: ls}, err
+	})
+
+	mcp.AddTool(s, &mcp.Tool{
+		Name:        "forgejo_label_create",
+		Title:       "Create label",
+		Description: "Create a label with a name, color and description. Creating a name that already exists conflicts; not idempotent.",
+		Annotations: writeAnnotations("Create label", false),
+	}, func(ctx context.Context, _ *mcp.CallToolRequest, in labelCreateIn) (*mcp.CallToolResult, domain.Label, error) {
+		l, err := application.CreateLabel(ctx, client, in.Owner, in.Repo, domain.CreateLabelInput{
+			Name: in.Name, Color: in.Color, Description: in.Description,
+		})
+		return nil, l, err
+	})
+
+	mcp.AddTool(s, &mcp.Tool{
+		Name:        "forgejo_label_update",
+		Title:       "Update label",
+		Description: "Edit an existing label's name, color or description. Repeating the same edit is idempotent.",
+		Annotations: writeAnnotations("Update label", true),
+	}, func(ctx context.Context, _ *mcp.CallToolRequest, in labelUpdateIn) (*mcp.CallToolResult, domain.Label, error) {
+		l, err := application.UpdateLabel(ctx, client, in.Owner, in.Repo, in.ID, domain.UpdateLabelInput{
+			Name: in.Name, Color: in.Color, Description: in.Description,
+		})
+		return nil, l, err
+	})
+
+	mcp.AddTool(s, &mcp.Tool{
+		Name:        "forgejo_label_delete",
+		Title:       "Delete label",
+		Description: "Delete a label by its ID. Destructive — confirm before use.",
+		Annotations: deleteAnnotations("Delete label"),
+	}, func(ctx context.Context, _ *mcp.CallToolRequest, in labelDeleteIn) (*mcp.CallToolResult, any, error) {
+		err := application.DeleteLabel(ctx, client, in.Owner, in.Repo, in.ID)
+		return nil, nil, err
+	})
+
+	mcp.AddTool(s, &mcp.Tool{
+		Name:        "forgejo_issue_set_labels",
+		Title:       "Set issue labels",
+		Description: "Replace the exact set of labels on an issue by their IDs. Repeating the same set is idempotent.",
+		Annotations: writeAnnotations("Set issue labels", true),
+	}, func(ctx context.Context, _ *mcp.CallToolRequest, in issueSetLabelsIn) (*mcp.CallToolResult, any, error) {
+		err := application.SetIssueLabels(ctx, client, in.Owner, in.Repo, in.Index, in.Labels)
+		return nil, nil, err
+	})
+}
+
+type milestoneListIn struct {
+	Owner string `json:"owner" jsonschema:"Repository owner/namespace"`
+	Repo  string `json:"repo" jsonschema:"Repository name"`
+}
+
+type milestoneCreateIn struct {
+	Owner       string `json:"owner" jsonschema:"Repository owner/namespace"`
+	Repo        string `json:"repo" jsonschema:"Repository name"`
+	Title       string `json:"title" jsonschema:"Milestone title"`
+	Description string `json:"description,omitempty" jsonschema:"Milestone description"`
+	DueOn       string `json:"due_on,omitempty" jsonschema:"Milestone due date (YYYY-MM-DD)"`
+}
+
+type milestoneUpdateIn struct {
+	Owner       string `json:"owner" jsonschema:"Repository owner/namespace"`
+	Repo        string `json:"repo" jsonschema:"Repository name"`
+	ID          int64  `json:"id" jsonschema:"Milestone ID"`
+	Title       string `json:"title,omitempty" jsonschema:"New title"`
+	Description string `json:"description,omitempty" jsonschema:"New description"`
+	State       string `json:"state,omitempty" jsonschema:"New state (open/closed)"`
+	DueOn       string `json:"due_on,omitempty" jsonschema:"New due date (YYYY-MM-DD)"`
+}
+
+type milestoneDeleteIn struct {
+	Owner string `json:"owner" jsonschema:"Repository owner/namespace"`
+	Repo  string `json:"repo" jsonschema:"Repository name"`
+	ID    int64  `json:"id" jsonschema:"Milestone ID"`
+}
+
+type labelListIn struct {
+	Owner string `json:"owner" jsonschema:"Repository owner/namespace"`
+	Repo  string `json:"repo" jsonschema:"Repository name"`
+}
+
+type labelCreateIn struct {
+	Owner       string `json:"owner" jsonschema:"Repository owner/namespace"`
+	Repo        string `json:"repo" jsonschema:"Repository name"`
+	Name        string `json:"name" jsonschema:"Label name"`
+	Color       string `json:"color,omitempty" jsonschema:"Label color (hex, e.g. d73a4a)"`
+	Description string `json:"description,omitempty" jsonschema:"Label description"`
+}
+
+type labelUpdateIn struct {
+	Owner       string `json:"owner" jsonschema:"Repository owner/namespace"`
+	Repo        string `json:"repo" jsonschema:"Repository name"`
+	ID          int64  `json:"id" jsonschema:"Label ID"`
+	Name        string `json:"name,omitempty" jsonschema:"New name"`
+	Color       string `json:"color,omitempty" jsonschema:"New color (hex)"`
+	Description string `json:"description,omitempty" jsonschema:"New description"`
+}
+
+type labelDeleteIn struct {
+	Owner string `json:"owner" jsonschema:"Repository owner/namespace"`
+	Repo  string `json:"repo" jsonschema:"Repository name"`
+	ID    int64  `json:"id" jsonschema:"Label ID"`
+}
+
+type issueSetLabelsIn struct {
+	Owner  string  `json:"owner" jsonschema:"Repository owner/namespace"`
+	Repo   string  `json:"repo" jsonschema:"Repository name"`
+	Index  int64   `json:"index" jsonschema:"Issue index number"`
+	Labels []int64 `json:"labels" jsonschema:"Label IDs to set (replaces the current set)"`
 }

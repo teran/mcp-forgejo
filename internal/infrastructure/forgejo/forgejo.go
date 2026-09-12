@@ -671,6 +671,89 @@ func (c *Client) UpdateRepository(ctx context.Context, owner, repo string, in do
 	return out, err
 }
 
+// ListMilestones implements domain.MilestoneService (issueGetMilestonesList).
+func (c *Client) ListMilestones(ctx context.Context, owner, repo string) ([]domain.Milestone, error) {
+	path := fmt.Sprintf("/api/v1/repos/%s/%s/milestones", pathEscape(owner), pathEscape(repo))
+	var out []domain.Milestone
+	err := c.do(ctx, http.MethodGet, path, nil, &out)
+	return out, err
+}
+
+// CreateMilestone implements domain.MilestoneWriteService
+// (issueCreateMilestone). A 409 conflict is surfaced as KindConflict when the
+// title already exists.
+func (c *Client) CreateMilestone(ctx context.Context, owner, repo string, in domain.CreateMilestoneInput) (domain.Milestone, error) {
+	path := fmt.Sprintf("/api/v1/repos/%s/%s/milestones", pathEscape(owner), pathEscape(repo))
+	var out domain.Milestone
+	err := c.doJSON(ctx, http.MethodPost, path, in, &out)
+	return out, err
+}
+
+// UpdateMilestone implements domain.MilestoneWriteService (issueEditMilestone).
+// The edit is idempotent: repeating the same body has no extra effect.
+func (c *Client) UpdateMilestone(ctx context.Context, owner, repo string, id int64, in domain.UpdateMilestoneInput) (domain.Milestone, error) {
+	path := fmt.Sprintf("/api/v1/repos/%s/%s/milestones/%s", pathEscape(owner), pathEscape(repo), strconv.FormatInt(id, 10))
+	var out domain.Milestone
+	err := c.doJSON(ctx, http.MethodPatch, path, in, &out)
+	return out, err
+}
+
+// DeleteMilestone implements domain.MilestoneDeleteService
+// (issueDeleteMilestone). The endpoint returns 204 on success.
+func (c *Client) DeleteMilestone(ctx context.Context, owner, repo string, id int64) error {
+	path := fmt.Sprintf("/api/v1/repos/%s/%s/milestones/%s", pathEscape(owner), pathEscape(repo), strconv.FormatInt(id, 10))
+	return c.do(ctx, http.MethodDelete, path, nil, nil)
+}
+
+// ListLabels implements domain.LabelService (issueListLabels).
+func (c *Client) ListLabels(ctx context.Context, owner, repo string) ([]domain.Label, error) {
+	path := fmt.Sprintf("/api/v1/repos/%s/%s/labels", pathEscape(owner), pathEscape(repo))
+	var out []domain.Label
+	err := c.do(ctx, http.MethodGet, path, nil, &out)
+	return out, err
+}
+
+// CreateLabel implements domain.LabelWriteService (issueCreateLabel). A 409
+// conflict is surfaced as KindConflict when the name already exists.
+func (c *Client) CreateLabel(ctx context.Context, owner, repo string, in domain.CreateLabelInput) (domain.Label, error) {
+	path := fmt.Sprintf("/api/v1/repos/%s/%s/labels", pathEscape(owner), pathEscape(repo))
+	var out domain.Label
+	err := c.doJSON(ctx, http.MethodPost, path, in, &out)
+	return out, err
+}
+
+// UpdateLabel implements domain.LabelWriteService (issueEditLabel). The edit is
+// idempotent: repeating the same body has no extra effect.
+func (c *Client) UpdateLabel(ctx context.Context, owner, repo string, id int64, in domain.UpdateLabelInput) (domain.Label, error) {
+	path := fmt.Sprintf("/api/v1/repos/%s/%s/labels/%s", pathEscape(owner), pathEscape(repo), strconv.FormatInt(id, 10))
+	var out domain.Label
+	err := c.doJSON(ctx, http.MethodPatch, path, in, &out)
+	return out, err
+}
+
+// DeleteLabel implements domain.LabelDeleteService (issueDeleteLabel). The
+// endpoint returns 204 on success.
+func (c *Client) DeleteLabel(ctx context.Context, owner, repo string, id int64) error {
+	path := fmt.Sprintf("/api/v1/repos/%s/%s/labels/%s", pathEscape(owner), pathEscape(repo), strconv.FormatInt(id, 10))
+	return c.do(ctx, http.MethodDelete, path, nil, nil)
+}
+
+// SetIssueLabels implements domain.IssueLabelsService (issueReplaceLabels). It
+// replaces the exact label set of an issue; the endpoint returns 204 on
+// success. Repeating the same set is idempotent.
+func (c *Client) SetIssueLabels(ctx context.Context, owner, repo string, index int64, labelIDs []int64) error {
+	path := fmt.Sprintf("/api/v1/repos/%s/%s/issues/%s/labels", pathEscape(owner), pathEscape(repo), strconv.FormatInt(index, 10))
+	// A nil label set must still serialize as an empty array ([]), not null, so
+	// the wire body always carries a JSON array for "labels".
+	if labelIDs == nil {
+		labelIDs = []int64{}
+	}
+	body := struct {
+		Labels []int64 `json:"labels"`
+	}{Labels: labelIDs}
+	return c.doJSON(ctx, http.MethodPut, path, body, nil)
+}
+
 // repoSearchResponse is the wire envelope of the Forgejo repo search endpoint.
 type repoSearchResponse struct {
 	OK   bool                `json:"ok"`

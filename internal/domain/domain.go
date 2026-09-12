@@ -172,9 +172,50 @@ type User struct {
 
 // Label is a Forgejo issue label.
 type Label struct {
-	ID    int64  `json:"id"`
-	Name  string `json:"name"`
-	Color string `json:"color"`
+	ID          int64  `json:"id"`
+	Name        string `json:"name"`
+	Color       string `json:"color"`
+	Description string `json:"description"`
+}
+
+// Milestone is a Forgejo milestone.
+type Milestone struct {
+	ID           int64  `json:"id"`
+	Title        string `json:"title"`
+	Description  string `json:"description"`
+	State        string `json:"state"`
+	OpenIssues   int    `json:"open_issues"`
+	ClosedIssues int    `json:"closed_issues"`
+	DueOn        string `json:"due_on"`
+}
+
+// CreateMilestoneInput carries the fields needed to create a milestone.
+type CreateMilestoneInput struct {
+	Title       string `json:"title"`
+	Description string `json:"description,omitempty"`
+	DueOn       string `json:"due_on,omitempty"`
+}
+
+// UpdateMilestoneInput carries the fields needed to edit a milestone.
+type UpdateMilestoneInput struct {
+	Title       string `json:"title,omitempty"`
+	Description string `json:"description,omitempty"`
+	State       string `json:"state,omitempty"`
+	DueOn       string `json:"due_on,omitempty"`
+}
+
+// CreateLabelInput carries the fields needed to create a label.
+type CreateLabelInput struct {
+	Name        string `json:"name"`
+	Color       string `json:"color,omitempty"`
+	Description string `json:"description,omitempty"`
+}
+
+// UpdateLabelInput carries the fields needed to edit a label.
+type UpdateLabelInput struct {
+	Name        string `json:"name,omitempty"`
+	Color       string `json:"color,omitempty"`
+	Description string `json:"description,omitempty"`
 }
 
 // Issue is a Forgejo issue.
@@ -662,4 +703,51 @@ type RepositoryForkService interface {
 type RepositoryUpdateService interface {
 	// UpdateRepository edits a repository (description/website/default_branch/private).
 	UpdateRepository(ctx context.Context, owner, repo string, in UpdateRepositoryInput) (Repository, error)
+}
+
+// MilestoneService lists the milestones of a repository.
+type MilestoneService interface {
+	// ListMilestones lists the milestones of a repository.
+	ListMilestones(ctx context.Context, owner, repo string) ([]Milestone, error)
+}
+
+// MilestoneWriteService creates and edits milestones.
+type MilestoneWriteService interface {
+	// CreateMilestone creates a new milestone.
+	CreateMilestone(ctx context.Context, owner, repo string, in CreateMilestoneInput) (Milestone, error)
+	// UpdateMilestone edits an existing milestone. Repeating the same edit is idempotent.
+	UpdateMilestone(ctx context.Context, owner, repo string, id int64, in UpdateMilestoneInput) (Milestone, error)
+}
+
+// MilestoneDeleteService deletes a milestone.
+type MilestoneDeleteService interface {
+	// DeleteMilestone deletes a milestone by its ID.
+	DeleteMilestone(ctx context.Context, owner, repo string, id int64) error
+}
+
+// LabelService lists the labels of a repository.
+type LabelService interface {
+	// ListLabels lists the labels of a repository.
+	ListLabels(ctx context.Context, owner, repo string) ([]Label, error)
+}
+
+// LabelWriteService creates and edits labels.
+type LabelWriteService interface {
+	// CreateLabel creates a new label.
+	CreateLabel(ctx context.Context, owner, repo string, in CreateLabelInput) (Label, error)
+	// UpdateLabel edits an existing label. Repeating the same edit is idempotent.
+	UpdateLabel(ctx context.Context, owner, repo string, id int64, in UpdateLabelInput) (Label, error)
+}
+
+// LabelDeleteService deletes a label.
+type LabelDeleteService interface {
+	// DeleteLabel deletes a label by its ID.
+	DeleteLabel(ctx context.Context, owner, repo string, id int64) error
+}
+
+// IssueLabelsService sets the exact set of labels on an issue.
+type IssueLabelsService interface {
+	// SetIssueLabels replaces the label set of an issue. Repeating the same set
+	// is idempotent.
+	SetIssueLabels(ctx context.Context, owner, repo string, index int64, labelIDs []int64) error
 }

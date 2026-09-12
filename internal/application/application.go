@@ -353,3 +353,69 @@ func ForkRepository(ctx context.Context, svc domain.RepositoryForkService, owner
 func UpdateRepository(ctx context.Context, svc domain.RepositoryUpdateService, owner, repo string, in domain.UpdateRepositoryInput) (domain.Repository, error) {
 	return svc.UpdateRepository(ctx, owner, repo, in)
 }
+
+// ListMilestones lists the milestones of a repository (SPEC 6.1).
+func ListMilestones(ctx context.Context, svc domain.MilestoneService, owner, repo string) ([]domain.Milestone, error) {
+	return svc.ListMilestones(ctx, owner, repo)
+}
+
+// CreateMilestone creates a milestone. An empty title is rejected before the
+// service is invoked (SPEC 6.2).
+func CreateMilestone(ctx context.Context, svc domain.MilestoneWriteService, owner, repo string, in domain.CreateMilestoneInput) (domain.Milestone, error) {
+	if strings.TrimSpace(in.Title) == "" {
+		return domain.Milestone{}, validationError("milestone title is required")
+	}
+	return svc.CreateMilestone(ctx, owner, repo, in)
+}
+
+// UpdateMilestone edits an existing milestone. Repeating the same edit is
+// idempotent; no validation is applied (SPEC 6.2).
+func UpdateMilestone(ctx context.Context, svc domain.MilestoneWriteService, owner, repo string, id int64, in domain.UpdateMilestoneInput) (domain.Milestone, error) {
+	return svc.UpdateMilestone(ctx, owner, repo, id, in)
+}
+
+// DeleteMilestone deletes a milestone by its ID (SPEC 6.3).
+func DeleteMilestone(ctx context.Context, svc domain.MilestoneDeleteService, owner, repo string, id int64) error {
+	if id <= 0 {
+		return validationError("milestone id must be positive")
+	}
+	return svc.DeleteMilestone(ctx, owner, repo, id)
+}
+
+// ListLabels lists the labels of a repository (SPEC 6.1).
+func ListLabels(ctx context.Context, svc domain.LabelService, owner, repo string) ([]domain.Label, error) {
+	return svc.ListLabels(ctx, owner, repo)
+}
+
+// CreateLabel creates a label. An empty name is rejected before the service is
+// invoked (SPEC 6.2).
+func CreateLabel(ctx context.Context, svc domain.LabelWriteService, owner, repo string, in domain.CreateLabelInput) (domain.Label, error) {
+	if strings.TrimSpace(in.Name) == "" {
+		return domain.Label{}, validationError("label name is required")
+	}
+	return svc.CreateLabel(ctx, owner, repo, in)
+}
+
+// UpdateLabel edits an existing label. Repeating the same edit is idempotent;
+// no validation is applied (SPEC 6.2).
+func UpdateLabel(ctx context.Context, svc domain.LabelWriteService, owner, repo string, id int64, in domain.UpdateLabelInput) (domain.Label, error) {
+	return svc.UpdateLabel(ctx, owner, repo, id, in)
+}
+
+// DeleteLabel deletes a label by its ID (SPEC 6.3).
+func DeleteLabel(ctx context.Context, svc domain.LabelDeleteService, owner, repo string, id int64) error {
+	if id <= 0 {
+		return validationError("label id must be positive")
+	}
+	return svc.DeleteLabel(ctx, owner, repo, id)
+}
+
+// SetIssueLabels replaces the exact label set of an issue. A non-positive index
+// is rejected before the service is invoked; repeating the same set is
+// idempotent (SPEC 6.2).
+func SetIssueLabels(ctx context.Context, svc domain.IssueLabelsService, owner, repo string, index int64, labelIDs []int64) error {
+	if index <= 0 {
+		return validationError("issue index must be positive")
+	}
+	return svc.SetIssueLabels(ctx, owner, repo, index, labelIDs)
+}
