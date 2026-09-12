@@ -33,6 +33,9 @@ func mockForgejoWrite() http.Handler {
 		case m == http.MethodPost && p == "/api/v1/user/repos":
 			_, _ = w.Write([]byte(`{"id":1,"name":"demo","full_name":"alice/demo","private":true,"default_branch":"main"}`))
 			return
+		case m == http.MethodPost && p == "/api/v1/orgs":
+			_, _ = w.Write([]byte(`{"id":10,"username":"acme","full_name":"ACME Inc"}`))
+			return
 		case m == http.MethodGet && p == "/api/v1/repos/acme/demo/contents/main.go":
 			// Probe: file absent -> WriteFile will create.
 			w.WriteHeader(http.StatusNotFound)
@@ -133,6 +136,7 @@ func listToolMap(t *testing.T, cs *mcp.ClientSession) map[string]*mcp.Tool {
 // (SPEC 6.2): true only for issue_update and pull_update.
 var writeToolIdempotent = map[string]bool{
 	"forgejo_repo_create":       false,
+	"forgejo_org_create":        false,
 	"forgejo_file_write":        false,
 	"forgejo_file_write_many":   false,
 	"forgejo_branch_create":     false,
@@ -194,6 +198,17 @@ func TestRepoCreateTool(t *testing.T) {
 	callTool(t, cs, "forgejo_repo_create", map[string]any{"name": "demo", "private": true, "auto_init": true}, &repo)
 	if repo.FullName != "alice/demo" || !repo.Private {
 		t.Errorf("repo = %+v", repo)
+	}
+}
+
+func TestOrgCreateTool(t *testing.T) {
+	cs := setupWrite(t)
+	var org domain.Organization
+	callTool(t, cs, "forgejo_org_create", map[string]any{
+		"username": "acme", "description": "ACME org", "full_name": "ACME Inc",
+	}, &org)
+	if org.ID != 10 || org.Username != "acme" || org.FullName != "ACME Inc" {
+		t.Errorf("org = %+v", org)
 	}
 }
 
@@ -363,7 +378,8 @@ func TestWriteToolJSONSchemaPinsFields(t *testing.T) {
 		}
 	}
 
-	check("forgejo_repo_create", []string{"name", "private", "auto_init", "owner"})
+	check("forgejo_repo_create", []string{"name", "private", "auto_init", "owner", "license", "gitignore", "default_branch", "readme"})
+	check("forgejo_org_create", []string{"username", "description", "full_name"})
 	check("forgejo_file_write", []string{"owner", "repo", "path", "message", "content", "branch"})
 	check("forgejo_branch_create", []string{"new_branch", "old_ref"})
 	check("forgejo_issue_create", []string{"title", "body", "labels", "milestone"})

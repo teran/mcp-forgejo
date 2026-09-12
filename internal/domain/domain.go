@@ -190,6 +190,25 @@ type OrganizationService interface {
 	ListOrganizations(ctx context.Context) ([]Organization, error)
 }
 
+// CreateOrganizationInput carries the fields needed to create an organization.
+type CreateOrganizationInput struct {
+	Username    string `json:"username"`
+	Description string `json:"description,omitempty"`
+	FullName    string `json:"full_name,omitempty"`
+}
+
+// OrganizationWriteService creates organizations.
+type OrganizationWriteService interface {
+	// CreateOrganization creates a new organization.
+	CreateOrganization(ctx context.Context, in CreateOrganizationInput) (Organization, error)
+}
+
+// OrganizationDeleteService permanently deletes an organization.
+type OrganizationDeleteService interface {
+	// DeleteOrganization deletes an organization by its username.
+	DeleteOrganization(ctx context.Context, org string) error
+}
+
 // IssueService is implemented by the Forgejo REST client.
 type IssueService interface {
 	// GetIssue returns a single issue by its index number.
@@ -326,10 +345,14 @@ type ReleaseService interface {
 // An empty Owner creates under the current authenticated user; a non-empty
 // Owner creates under that organization.
 type CreateRepositoryInput struct {
-	Owner    string `json:"owner"`
-	Name     string `json:"name"`
-	Private  bool   `json:"private"`
-	AutoInit bool   `json:"auto_init"`
+	Owner         string `json:"owner"`
+	Name          string `json:"name"`
+	Private       bool   `json:"private"`
+	AutoInit      bool   `json:"auto_init"`
+	License       string `json:"license,omitempty"`
+	Gitignore     string `json:"gitignore,omitempty"`
+	DefaultBranch string `json:"default_branch,omitempty"`
+	Readme        string `json:"readme,omitempty"`
 }
 
 // RepositoryWriteService creates repositories.

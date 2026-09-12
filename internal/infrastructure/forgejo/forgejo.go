@@ -354,9 +354,27 @@ func (c *Client) CreateRepository(ctx context.Context, in domain.CreateRepositor
 	} else {
 		path = "/api/v1/user/repos"
 	}
-	body := createRepositoryRequest{Name: in.Name, Private: in.Private, AutoInit: in.AutoInit}
+	body := createRepositoryRequest{
+		Name:          in.Name,
+		Private:       in.Private,
+		AutoInit:      in.AutoInit,
+		License:       in.License,
+		Gitignore:     in.Gitignore,
+		DefaultBranch: in.DefaultBranch,
+		Readme:        in.Readme,
+	}
 	var out domain.Repository
 	err := c.doJSON(ctx, http.MethodPost, path, body, &out)
+	return out, err
+}
+
+// CreateOrganization implements domain.OrganizationWriteService (orgCreate).
+// The endpoint returns 201 with the created organization; a 409 conflict is
+// surfaced as KindConflict when the username is already taken.
+func (c *Client) CreateOrganization(ctx context.Context, in domain.CreateOrganizationInput) (domain.Organization, error) {
+	body := createOrganizationRequest{Username: in.Username, Description: in.Description, FullName: in.FullName}
+	var out domain.Organization
+	err := c.doJSON(ctx, http.MethodPost, "/api/v1/orgs", body, &out)
 	return out, err
 }
 
@@ -602,6 +620,13 @@ func (c *Client) DeleteRepository(ctx context.Context, owner, repo string) error
 	return c.do(ctx, http.MethodDelete, path, nil, nil)
 }
 
+// DeleteOrganization implements domain.OrganizationDeleteService (orgDelete).
+// The endpoint returns 204 on success.
+func (c *Client) DeleteOrganization(ctx context.Context, org string) error {
+	path := fmt.Sprintf("/api/v1/orgs/%s", pathEscape(org))
+	return c.do(ctx, http.MethodDelete, path, nil, nil)
+}
+
 // repoSearchResponse is the wire envelope of the Forgejo repo search endpoint.
 type repoSearchResponse struct {
 	OK   bool                `json:"ok"`
@@ -663,11 +688,23 @@ type contentResponse struct {
 }
 
 // createRepositoryRequest is the body of repoCreateFile / orgCreateRepo. The
-// owner goes in the URL path, never the body.
+// owner goes in the URL path, never the body. Template fields (license,
+// gitignore, default_branch, readme) are omitted when empty.
 type createRepositoryRequest struct {
-	Name     string `json:"name"`
-	Private  bool   `json:"private"`
-	AutoInit bool   `json:"auto_init"`
+	Name          string `json:"name"`
+	Private       bool   `json:"private"`
+	AutoInit      bool   `json:"auto_init"`
+	License       string `json:"license,omitempty"`
+	Gitignore     string `json:"gitignore,omitempty"`
+	DefaultBranch string `json:"default_branch,omitempty"`
+	Readme        string `json:"readme,omitempty"`
+}
+
+// createOrganizationRequest is the body of orgCreate.
+type createOrganizationRequest struct {
+	Username    string `json:"username"`
+	Description string `json:"description,omitempty"`
+	FullName    string `json:"full_name,omitempty"`
 }
 
 // fileWriteRequest is the shared body of repoCreateFile and repoUpdateFile.

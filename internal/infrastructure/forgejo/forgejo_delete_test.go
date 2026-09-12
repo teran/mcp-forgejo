@@ -325,3 +325,63 @@ func TestDeleteRepositoryTransientRedactsToken(t *testing.T) {
 		t.Errorf("token not redacted: %q", err.Error())
 	}
 }
+
+// =============================================================================
+// forgejo_org_delete — orgDelete
+// Forgejo: DELETE /orgs/{org} → 204
+// =============================================================================
+
+func TestDeleteOrganization(t *testing.T) {
+	var gotMethod, gotPath string
+	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotMethod, gotPath = r.Method, r.URL.Path
+		w.WriteHeader(http.StatusNoContent)
+	})
+	c, _ := newTestServer(t, handler)
+
+	if err := c.DeleteOrganization(context.Background(), "acme"); err != nil {
+		t.Fatalf("DeleteOrganization() error = %v", err)
+	}
+	if gotMethod != http.MethodDelete {
+		t.Errorf("method = %q, want DELETE", gotMethod)
+	}
+	if gotPath != "/api/v1/orgs/acme" {
+		t.Errorf("path = %q, want /api/v1/orgs/acme", gotPath)
+	}
+}
+
+func TestDeleteOrganizationNotFound(t *testing.T) {
+	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusNotFound)
+		_, _ = w.Write([]byte(`{"message":"org not found"}`))
+	})
+	c, _ := newTestServer(t, handler)
+	err := c.DeleteOrganization(context.Background(), "acme")
+	if err == nil {
+		t.Fatal("expected error for 404")
+	}
+	fe, ok := err.(*domain.ForgejoError)
+	if !ok || fe.Kind != domain.KindNotFound {
+		t.Errorf("expected not_found, got %v", err)
+	}
+}
+
+func TestDeleteOrganizationTransientRedactsToken(t *testing.T) {
+	body := `{"message":"boom ` + testToken + `"}`
+	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusInternalServerError)
+		_, _ = w.Write([]byte(body))
+	})
+	c, _ := newTestServer(t, handler)
+	err := c.DeleteOrganization(context.Background(), "acme")
+	if err == nil {
+		t.Fatal("expected error for 5xx")
+	}
+	fe, ok := err.(*domain.ForgejoError)
+	if !ok || fe.Kind != domain.KindTransient {
+		t.Errorf("expected transient, got %v", err)
+	}
+	if strings.Contains(err.Error(), testToken) || !strings.Contains(err.Error(), "[REDACTED]") {
+		t.Errorf("token not redacted: %q", err.Error())
+	}
+}

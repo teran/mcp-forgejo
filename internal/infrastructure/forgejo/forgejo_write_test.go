@@ -119,6 +119,101 @@ func TestCreateRepositoryServerErrorRedactsToken(t *testing.T) {
 	}
 }
 
+// CreateRepository template fields (license, gitignore, default_branch, readme)
+// must be sent in the request body when non-empty, and omitted when empty.
+func TestCreateRepositorySendsTemplateFields(t *testing.T) {
+	var gotBody map[string]any
+	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotBody = decodeBody(t, r)
+		_, _ = w.Write([]byte(`{"id":1,"name":"demo","full_name":"alice/demo"}`))
+	})
+	c, _ := newTestServer(t, handler)
+
+	_, err := c.CreateRepository(context.Background(), domain.CreateRepositoryInput{
+		Name: "demo", License: "MIT", Gitignore: "Go", DefaultBranch: "main", Readme: "Default",
+	})
+	if err != nil {
+		t.Fatalf("CreateRepository() error = %v", err)
+	}
+	if gotBody["license"] != "MIT" || gotBody["gitignore"] != "Go" ||
+		gotBody["default_branch"] != "main" || gotBody["readme"] != "Default" {
+		t.Errorf("body = %+v, want license/gitignore/default_branch/readme set", gotBody)
+	}
+}
+
+func TestCreateRepositoryOmitsEmptyTemplateFields(t *testing.T) {
+	var gotBody map[string]any
+	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotBody = decodeBody(t, r)
+		_, _ = w.Write([]byte(`{"id":1,"name":"demo","full_name":"alice/demo"}`))
+	})
+	c, _ := newTestServer(t, handler)
+
+	_, err := c.CreateRepository(context.Background(), domain.CreateRepositoryInput{Name: "demo"})
+	if err != nil {
+		t.Fatalf("CreateRepository() error = %v", err)
+	}
+	for _, f := range []string{"license", "gitignore", "default_branch", "readme"} {
+		if _, ok := gotBody[f]; ok {
+			t.Errorf("body contains %q but it should be omitted when empty: %+v", f, gotBody)
+		}
+	}
+}
+
+// =============================================================================
+// forgejo_org_create — orgCreate
+// Forgejo: POST /orgs {username, description, full_name}
+// =============================================================================
+
+func TestCreateOrganization(t *testing.T) {
+	var gotMethod, gotPath, gotAuth string
+	var gotBody map[string]any
+	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotMethod, gotPath, gotAuth = r.Method, r.URL.Path, r.Header.Get("Authorization")
+		gotBody = decodeBody(t, r)
+		_, _ = w.Write([]byte(`{"id":10,"username":"acme","full_name":"ACME Inc"}`))
+	})
+	c, _ := newTestServer(t, handler)
+
+	org, err := c.CreateOrganization(context.Background(), domain.CreateOrganizationInput{
+		Username: "acme", Description: "ACME org", FullName: "ACME Inc",
+	})
+	if err != nil {
+		t.Fatalf("CreateOrganization() error = %v", err)
+	}
+	if gotMethod != http.MethodPost {
+		t.Errorf("method = %q, want POST", gotMethod)
+	}
+	if gotPath != "/api/v1/orgs" {
+		t.Errorf("path = %q, want /api/v1/orgs", gotPath)
+	}
+	if gotAuth != "token "+testToken {
+		t.Errorf("auth = %q", gotAuth)
+	}
+	if gotBody["username"] != "acme" || gotBody["description"] != "ACME org" || gotBody["full_name"] != "ACME Inc" {
+		t.Errorf("body = %+v, want username/description/full_name", gotBody)
+	}
+	if org.ID != 10 || org.Username != "acme" || org.FullName != "ACME Inc" {
+		t.Errorf("org = %+v", org)
+	}
+}
+
+func TestCreateOrganizationConflict(t *testing.T) {
+	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusConflict)
+		_, _ = w.Write([]byte(`{"message":"organization already exists"}`))
+	})
+	c, _ := newTestServer(t, handler)
+	_, err := c.CreateOrganization(context.Background(), domain.CreateOrganizationInput{Username: "acme"})
+	if err == nil {
+		t.Fatal("expected error for 409")
+	}
+	fe, ok := err.(*domain.ForgejoError)
+	if !ok || fe.Kind != domain.KindConflict {
+		t.Errorf("expected conflict, got %v", err)
+	}
+}
+
 // =============================================================================
 // #15 forgejo_file_write — repoCreateFile / repoUpdateFile
 // =============================================================================
@@ -640,6 +735,10 @@ func TestWriteMethodsServerError(t *testing.T) {
 	}{
 		{"CreateRepository", func() error {
 			_, err := c.CreateRepository(context.Background(), domain.CreateRepositoryInput{Name: "n"})
+			return err
+		}},
+		{"CreateOrganization", func() error {
+			_, err := c.CreateOrganization(context.Background(), domain.CreateOrganizationInput{Username: "o"})
 			return err
 		}},
 		{"CreateFile", func() error {

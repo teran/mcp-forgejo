@@ -111,6 +111,15 @@ func CreateRepository(ctx context.Context, svc domain.RepositoryWriteService, in
 	return svc.CreateRepository(ctx, in)
 }
 
+// CreateOrganization creates an organization. An empty username is rejected
+// before the service is invoked.
+func CreateOrganization(ctx context.Context, svc domain.OrganizationWriteService, in domain.CreateOrganizationInput) (domain.Organization, error) {
+	if strings.TrimSpace(in.Username) == "" {
+		return domain.Organization{}, validationError("organization username is required")
+	}
+	return svc.CreateOrganization(ctx, in)
+}
+
 // WriteFile writes a single file: it probes for the file and creates it when
 // absent or updates it (carrying the existing blob SHA) when present. A probe
 // error that is not a 404 is propagated without any write. Not idempotent —
@@ -293,4 +302,13 @@ func DeleteRepository(ctx context.Context, svc domain.RepositoryDeleteService, o
 		return validationError("permanent repository deletion requires explicit confirmation")
 	}
 	return svc.DeleteRepository(ctx, owner, repo)
+}
+
+// DeleteOrganization permanently deletes an organization. An empty org name is
+// rejected before the service is invoked.
+func DeleteOrganization(ctx context.Context, svc domain.OrganizationDeleteService, org string) error {
+	if strings.TrimSpace(org) == "" {
+		return validationError("organization name is required")
+	}
+	return svc.DeleteOrganization(ctx, org)
 }

@@ -56,6 +56,9 @@ func mockForgejoDelete() http.Handler {
 		case m == http.MethodDelete && p == "/api/v1/repos/acme/demo":
 			w.WriteHeader(http.StatusNoContent)
 			return
+		case m == http.MethodDelete && p == "/api/v1/orgs/acme":
+			w.WriteHeader(http.StatusNoContent)
+			return
 		default:
 			w.WriteHeader(http.StatusNotFound)
 			_, _ = w.Write([]byte(`{"message":"unexpected "` + m + `" ` + p + `"}`))
@@ -100,6 +103,7 @@ var deleteToolNames = []string{
 	"forgejo_comment_delete",
 	"forgejo_release_delete",
 	"forgejo_repo_delete",
+	"forgejo_org_delete",
 }
 
 func TestDeleteToolsRegistered(t *testing.T) {
@@ -208,6 +212,11 @@ func TestRepoDeleteToolConfirmed(t *testing.T) {
 	}, nil)
 }
 
+func TestOrgDeleteTool(t *testing.T) {
+	cs := setupDelete(t)
+	callTool(t, cs, "forgejo_org_delete", map[string]any{"org": "acme"}, nil)
+}
+
 // TestRepoDeleteToolRequiresConfirmation verifies the destructive guard: a repo
 // delete without confirm=true must fail with an error result (never call the
 // Forgejo API).
@@ -278,4 +287,5 @@ func TestDeleteToolJSONSchemaPinsFields(t *testing.T) {
 	check("forgejo_comment_delete", []string{"owner", "repo", "comment_id"})
 	check("forgejo_release_delete", []string{"owner", "repo", "id"})
 	check("forgejo_repo_delete", []string{"owner", "repo", "confirm"})
+	check("forgejo_org_delete", []string{"org"})
 }

@@ -352,8 +352,21 @@ func registerWriteTools(s *mcp.Server, client *forgejo.Client) {
 	}, func(ctx context.Context, _ *mcp.CallToolRequest, in repoCreateIn) (*mcp.CallToolResult, domain.Repository, error) {
 		repo, err := application.CreateRepository(ctx, client, domain.CreateRepositoryInput{
 			Owner: in.Owner, Name: in.Name, Private: in.Private, AutoInit: in.AutoInit,
+			License: in.License, Gitignore: in.Gitignore, DefaultBranch: in.DefaultBranch, Readme: in.Readme,
 		})
 		return nil, repo, err
+	})
+
+	mcp.AddTool(s, &mcp.Tool{
+		Name:        "forgejo_org_create",
+		Title:       "Create organization",
+		Description: "Create an organization with a username, description and full name. Creating a name that already exists conflicts; not idempotent.",
+		Annotations: writeAnnotations("Create organization", false),
+	}, func(ctx context.Context, _ *mcp.CallToolRequest, in orgCreateIn) (*mcp.CallToolResult, domain.Organization, error) {
+		org, err := application.CreateOrganization(ctx, client, domain.CreateOrganizationInput{
+			Username: in.Username, Description: in.Description, FullName: in.FullName,
+		})
+		return nil, org, err
 	})
 
 	mcp.AddTool(s, &mcp.Tool{
@@ -486,10 +499,20 @@ func registerWriteTools(s *mcp.Server, client *forgejo.Client) {
 }
 
 type repoCreateIn struct {
-	Owner    string `json:"owner,omitempty" jsonschema:"Repository owner/namespace; empty creates under the current user"`
-	Name     string `json:"name" jsonschema:"Repository name"`
-	Private  bool   `json:"private,omitempty" jsonschema:"Create a private repository"`
-	AutoInit bool   `json:"auto_init,omitempty" jsonschema:"Initialize the repository with a README"`
+	Owner         string `json:"owner,omitempty" jsonschema:"Repository owner/namespace; empty creates under the current user"`
+	Name          string `json:"name" jsonschema:"Repository name"`
+	Private       bool   `json:"private,omitempty" jsonschema:"Create a private repository"`
+	AutoInit      bool   `json:"auto_init,omitempty" jsonschema:"Initialize the repository with a README"`
+	License       string `json:"license,omitempty" jsonschema:"License template (e.g. MIT)"`
+	Gitignore     string `json:"gitignore,omitempty" jsonschema:"Gitignore template (e.g. Go)"`
+	DefaultBranch string `json:"default_branch,omitempty" jsonschema:"Default branch name (e.g. main)"`
+	Readme        string `json:"readme,omitempty" jsonschema:"README template (e.g. Default)"`
+}
+
+type orgCreateIn struct {
+	Username    string `json:"username" jsonschema:"Organization username/name"`
+	Description string `json:"description,omitempty" jsonschema:"Organization description"`
+	FullName    string `json:"full_name,omitempty" jsonschema:"Organization full name"`
 }
 
 type fileWriteIn struct {
@@ -653,6 +676,16 @@ func registerDeleteTools(s *mcp.Server, client *forgejo.Client) {
 		err := application.DeleteRepository(ctx, client, in.Owner, in.Repo, in.Confirm)
 		return nil, nil, err
 	})
+
+	mcp.AddTool(s, &mcp.Tool{
+		Name:        "forgejo_org_delete",
+		Title:       "Delete organization",
+		Description: "Permanently delete an organization. Highly destructive — confirm before use.",
+		Annotations: deleteAnnotations("Delete organization"),
+	}, func(ctx context.Context, _ *mcp.CallToolRequest, in orgDeleteIn) (*mcp.CallToolResult, any, error) {
+		err := application.DeleteOrganization(ctx, client, in.Org)
+		return nil, nil, err
+	})
 }
 
 type fileDeleteIn struct {
@@ -691,4 +724,8 @@ type repoDeleteIn struct {
 	Owner   string `json:"owner" jsonschema:"Repository owner/namespace"`
 	Repo    string `json:"repo" jsonschema:"Repository name"`
 	Confirm bool   `json:"confirm" jsonschema:"Explicit confirmation; required to permanently delete the repository"`
+}
+
+type orgDeleteIn struct {
+	Org string `json:"org" jsonschema:"Organization username/name to delete"`
 }

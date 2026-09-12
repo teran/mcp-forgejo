@@ -111,6 +111,18 @@ func (s *stubRepositoryDeleteService) DeleteRepository(_ context.Context, owner,
 	return s.err
 }
 
+type stubOrgDeleteService struct {
+	err    error
+	calls  int
+	gotOrg string
+}
+
+func (s *stubOrgDeleteService) DeleteOrganization(_ context.Context, org string) error {
+	s.calls++
+	s.gotOrg = org
+	return s.err
+}
+
 // =============================================================================
 // #26 forgejo_file_delete
 // =============================================================================
@@ -355,5 +367,37 @@ func TestDeleteRepositoryPropagatesError(t *testing.T) {
 	svc := &stubRepositoryDeleteService{err: want}
 	if err := DeleteRepository(context.Background(), svc, "acme", "demo", true); !errors.Is(err, want) {
 		t.Errorf("DeleteRepository() error = %v, want %v", err, want)
+	}
+}
+
+// =============================================================================
+// forgejo_org_delete
+// =============================================================================
+
+func TestDeleteOrganization(t *testing.T) {
+	svc := &stubOrgDeleteService{}
+	if err := DeleteOrganization(context.Background(), svc, "acme"); err != nil {
+		t.Fatalf("DeleteOrganization() error = %v", err)
+	}
+	if svc.calls != 1 || svc.gotOrg != "acme" {
+		t.Errorf("calls=%d gotOrg=%q", svc.calls, svc.gotOrg)
+	}
+}
+
+func TestDeleteOrganizationPropagatesError(t *testing.T) {
+	want := domain.NewForgejoError(domain.KindNotFound, "missing")
+	svc := &stubOrgDeleteService{err: want}
+	if err := DeleteOrganization(context.Background(), svc, "acme"); !errors.Is(err, want) {
+		t.Errorf("DeleteOrganization() error = %v, want %v", err, want)
+	}
+}
+
+func TestDeleteOrganizationValidation(t *testing.T) {
+	svc := &stubOrgDeleteService{}
+	if err := DeleteOrganization(context.Background(), svc, ""); err == nil || !isValidation(err) {
+		t.Errorf("expected validation error for empty org, got %v", err)
+	}
+	if svc.calls != 0 {
+		t.Errorf("service should not be called on validation failure")
 	}
 }

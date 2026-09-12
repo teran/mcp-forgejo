@@ -28,6 +28,19 @@ func (s *stubRepoWriteService) CreateRepository(_ context.Context, in domain.Cre
 	return s.repo, s.createErr
 }
 
+type stubOrgWriteService struct {
+	org   domain.Organization
+	err   error
+	gotIn domain.CreateOrganizationInput
+	calls int
+}
+
+func (s *stubOrgWriteService) CreateOrganization(_ context.Context, in domain.CreateOrganizationInput) (domain.Organization, error) {
+	s.calls++
+	s.gotIn = in
+	return s.org, s.err
+}
+
 type stubFileWriteOrchestrator struct {
 	file            domain.File
 	getErr          error
@@ -215,6 +228,64 @@ func TestCreateRepositoryValidation(t *testing.T) {
 		t.Errorf("expected validation error for empty name, got %v", err)
 	}
 	if svc.createCalls != 0 {
+		t.Errorf("service should not be called on validation failure")
+	}
+}
+
+// The repository template fields (license, gitignore, default_branch, readme)
+// must be forwarded through to the write service.
+func TestCreateRepositoryForwardsTemplateFields(t *testing.T) {
+	svc := &stubRepoWriteService{repo: domain.Repository{Name: "demo"}}
+	_, err := CreateRepository(context.Background(), svc, domain.CreateRepositoryInput{
+		Name: "demo", License: "MIT", Gitignore: "Go", DefaultBranch: "main", Readme: "Default",
+	})
+	if err != nil {
+		t.Fatalf("CreateRepository() error = %v", err)
+	}
+	if svc.gotIn.License != "MIT" || svc.gotIn.Gitignore != "Go" ||
+		svc.gotIn.DefaultBranch != "main" || svc.gotIn.Readme != "Default" {
+		t.Errorf("template fields not forwarded: %+v", svc.gotIn)
+	}
+}
+
+// =============================================================================
+// forgejo_org_create
+// =============================================================================
+
+func TestCreateOrganization(t *testing.T) {
+	svc := &stubOrgWriteService{org: domain.Organization{ID: 10, Username: "acme"}}
+	got, err := CreateOrganization(context.Background(), svc, domain.CreateOrganizationInput{
+		Username: "acme", Description: "ACME org", FullName: "ACME Inc",
+	})
+	if err != nil {
+		t.Fatalf("CreateOrganization() error = %v", err)
+	}
+	if got.Username != "acme" {
+		t.Errorf("org = %+v", got)
+	}
+	if svc.calls != 1 {
+		t.Errorf("expected one CreateOrganization call, got %d", svc.calls)
+	}
+	if svc.gotIn.Username != "acme" || svc.gotIn.Description != "ACME org" || svc.gotIn.FullName != "ACME Inc" {
+		t.Errorf("input not forwarded: %+v", svc.gotIn)
+	}
+}
+
+func TestCreateOrganizationPropagatesError(t *testing.T) {
+	want := domain.NewForgejoError(domain.KindConflict, "exists")
+	svc := &stubOrgWriteService{err: want}
+	if _, err := CreateOrganization(context.Background(), svc, domain.CreateOrganizationInput{Username: "acme"}); !errors.Is(err, want) {
+		t.Errorf("CreateOrganization() error = %v, want %v", err, want)
+	}
+}
+
+func TestCreateOrganizationValidation(t *testing.T) {
+	svc := &stubOrgWriteService{}
+	_, err := CreateOrganization(context.Background(), svc, domain.CreateOrganizationInput{})
+	if err == nil || !isValidation(err) {
+		t.Errorf("expected validation error for empty username, got %v", err)
+	}
+	if svc.calls != 0 {
 		t.Errorf("service should not be called on validation failure")
 	}
 }
