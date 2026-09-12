@@ -229,3 +229,68 @@ func CreateRelease(ctx context.Context, svc domain.ReleaseWriteService, in domai
 	}
 	return svc.CreateRelease(ctx, in)
 }
+
+// DeleteFile deletes a file at path+branch. It first probes the file to obtain
+// its current blob SHA; a failed probe is propagated without any delete, so a
+// missing or unreadable file is never silently deleted (SPEC 6.3 #26).
+func DeleteFile(ctx context.Context, svc domain.FileDeleteService, in domain.DeleteFileInput) (domain.FileResult, error) {
+	if strings.TrimSpace(in.Path) == "" {
+		return domain.FileResult{}, validationError("file path is required")
+	}
+	existing, err := svc.GetFile(ctx, in.Owner, in.Repo, in.Path, in.Branch)
+	if err != nil {
+		return domain.FileResult{}, err
+	}
+	in.SHA = existing.SHA
+	return svc.DeleteFile(ctx, in)
+}
+
+// DeleteBranch deletes a branch. The repository is read first so the default
+// branch can never be deleted (SPEC 6.3 #27).
+func DeleteBranch(ctx context.Context, svc domain.BranchDeleteService, owner, repo, branch string) error {
+	if strings.TrimSpace(branch) == "" {
+		return validationError("branch name is required")
+	}
+	r, err := svc.GetRepository(ctx, owner, repo)
+	if err != nil {
+		return err
+	}
+	if r.DefaultBranch == branch {
+		return validationError("cannot delete the default branch")
+	}
+	return svc.DeleteBranch(ctx, owner, repo, branch)
+}
+
+// DeleteIssue permanently deletes an issue by its index (SPEC 6.3 #28).
+func DeleteIssue(ctx context.Context, svc domain.IssueDeleteService, owner, repo string, index int64) error {
+	if index <= 0 {
+		return validationError("issue index must be positive")
+	}
+	return svc.DeleteIssue(ctx, owner, repo, index)
+}
+
+// DeleteComment deletes an issue/pull request comment by its ID (SPEC 6.3 #29).
+func DeleteComment(ctx context.Context, svc domain.CommentDeleteService, owner, repo string, commentID int64) error {
+	if commentID <= 0 {
+		return validationError("comment id must be positive")
+	}
+	return svc.DeleteComment(ctx, owner, repo, commentID)
+}
+
+// DeleteRelease deletes a release by its ID; the tag remains (SPEC 6.3 #30).
+func DeleteRelease(ctx context.Context, svc domain.ReleaseDeleteService, owner, repo string, id int64) error {
+	if id <= 0 {
+		return validationError("release id must be positive")
+	}
+	return svc.DeleteRelease(ctx, owner, repo, id)
+}
+
+// DeleteRepository permanently deletes a repository. It requires explicit
+// confirmation; without it the deletion is refused before any service call
+// (SPEC 6.3 #31).
+func DeleteRepository(ctx context.Context, svc domain.RepositoryDeleteService, owner, repo string, confirm bool) error {
+	if !confirm {
+		return validationError("permanent repository deletion requires explicit confirmation")
+	}
+	return svc.DeleteRepository(ctx, owner, repo)
+}

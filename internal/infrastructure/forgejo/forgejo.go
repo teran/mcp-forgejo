@@ -521,6 +521,58 @@ func (c *Client) CreateRelease(ctx context.Context, in domain.CreateReleaseInput
 	return out, err
 }
 
+// DeleteFile implements domain.FileDeleteService (repoDeleteFile). The request
+// must carry the blob SHA of the current version so the delete is
+// conflict-checked; the response maps onto a domain.FileResult.
+func (c *Client) DeleteFile(ctx context.Context, in domain.DeleteFileInput) (domain.FileResult, error) {
+	path := fmt.Sprintf("/api/v1/repos/%s/%s/contents/%s", pathEscape(in.Owner), pathEscape(in.Repo), pathEscape(in.Path))
+	body := fileDeleteRequest{
+		Message: in.Message,
+		Branch:  in.Branch,
+		SHA:     in.SHA,
+	}
+	var wire fileDeleteResponse
+	if err := c.doJSON(ctx, http.MethodDelete, path, body, &wire); err != nil {
+		return domain.FileResult{}, err
+	}
+	return fileDeleteResultFromWire(wire), nil
+}
+
+// DeleteBranch implements domain.BranchDeleteService (repoDeleteBranch). The
+// endpoint returns 204 on success.
+func (c *Client) DeleteBranch(ctx context.Context, owner, repo, branch string) error {
+	path := fmt.Sprintf("/api/v1/repos/%s/%s/branches/%s", pathEscape(owner), pathEscape(repo), pathEscape(branch))
+	return c.do(ctx, http.MethodDelete, path, nil, nil)
+}
+
+// DeleteIssue implements domain.IssueDeleteService (issueDelete). The endpoint
+// returns 204 on success.
+func (c *Client) DeleteIssue(ctx context.Context, owner, repo string, index int64) error {
+	path := fmt.Sprintf("/api/v1/repos/%s/%s/issues/%s", pathEscape(owner), pathEscape(repo), strconv.FormatInt(index, 10))
+	return c.do(ctx, http.MethodDelete, path, nil, nil)
+}
+
+// DeleteComment implements domain.CommentDeleteService (issueDeleteComment).
+// The endpoint returns 204 on success.
+func (c *Client) DeleteComment(ctx context.Context, owner, repo string, commentID int64) error {
+	path := fmt.Sprintf("/api/v1/repos/%s/%s/issues/comments/%s", pathEscape(owner), pathEscape(repo), strconv.FormatInt(commentID, 10))
+	return c.do(ctx, http.MethodDelete, path, nil, nil)
+}
+
+// DeleteRelease implements domain.ReleaseDeleteService (repoDeleteRelease). The
+// endpoint returns 204 on success and leaves the tag in place.
+func (c *Client) DeleteRelease(ctx context.Context, owner, repo string, id int64) error {
+	path := fmt.Sprintf("/api/v1/repos/%s/%s/releases/%s", pathEscape(owner), pathEscape(repo), strconv.FormatInt(id, 10))
+	return c.do(ctx, http.MethodDelete, path, nil, nil)
+}
+
+// DeleteRepository implements domain.RepositoryDeleteService (repoDelete). The
+// endpoint returns 204 on success and permanently removes the repository.
+func (c *Client) DeleteRepository(ctx context.Context, owner, repo string) error {
+	path := fmt.Sprintf("/api/v1/repos/%s/%s", pathEscape(owner), pathEscape(repo))
+	return c.do(ctx, http.MethodDelete, path, nil, nil)
+}
+
 // repoSearchResponse is the wire envelope of the Forgejo repo search endpoint.
 type repoSearchResponse struct {
 	OK   bool                `json:"ok"`
@@ -605,6 +657,28 @@ type fileWriteResponse struct {
 	Commit  struct {
 		SHA string `json:"sha"`
 	} `json:"commit"`
+}
+
+// fileDeleteRequest is the body of repoDeleteFile. SHA is required so Forgejo
+// can conflict-check the delete against concurrent modifications.
+type fileDeleteRequest struct {
+	Message string `json:"message"`
+	Branch  string `json:"branch,omitempty"`
+	SHA     string `json:"sha"`
+}
+
+// fileDeleteResponse is the wire shape of a repoDeleteFile response: the
+// deleted contents entry plus the commit that removed it.
+type fileDeleteResponse struct {
+	Content contentResponse `json:"content"`
+	Commit  struct {
+		SHA string `json:"sha"`
+	} `json:"commit"`
+}
+
+// fileDeleteResultFromWire maps a fileDeleteResponse into a domain.FileResult.
+func fileDeleteResultFromWire(w fileDeleteResponse) domain.FileResult {
+	return domain.FileResult{Path: w.Content.Path, SHA: w.Content.SHA, CommitSHA: w.Commit.SHA}
 }
 
 // fileResultFromWire maps a fileWriteResponse into a domain.FileResult,
@@ -753,7 +827,11 @@ func (c *Client) do(ctx context.Context, method, path string, query url.Values, 
 func (c *Client) doJSON(ctx context.Context, method, path string, body, out any) error {
 	req := c.resty.R().
 		SetContext(ctx).
-		SetResponseBodyUnlimitedReads(true)
+		SetResponseBodyUnlimitedReads(true).
+		// resty drops a payload on DELETE unless explicitly allowed; the
+		// repoDeleteFile endpoint requires a JSON body, so enable it. The
+		// flag is a no-op for other methods.
+		SetMethodDeleteAllowPayload(true)
 	if body != nil {
 		req = req.SetBody(body)
 	}

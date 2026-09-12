@@ -514,3 +514,56 @@ type ReleaseWriteService interface {
 	// CreateRelease creates a release for an existing tag.
 	CreateRelease(ctx context.Context, in CreateReleaseInput) (Release, error)
 }
+
+// DeleteFileInput carries the fields needed to delete a single file. SHA must
+// be the blob SHA of the current version so the delete is conflict-checked.
+type DeleteFileInput struct {
+	Owner   string `json:"owner"`
+	Repo    string `json:"repo"`
+	Path    string `json:"path"`
+	Branch  string `json:"branch"`
+	Message string `json:"message"`
+	SHA     string `json:"sha"`
+}
+
+// FileDeleteService deletes a file from a repository. It first probes the
+// file (to obtain its current SHA) and then deletes it.
+type FileDeleteService interface {
+	// GetFile returns the content of a single file at path+ref.
+	GetFile(ctx context.Context, owner, repo, path, ref string) (File, error)
+	// DeleteFile deletes a file at path+branch carrying the current blob SHA.
+	DeleteFile(ctx context.Context, in DeleteFileInput) (FileResult, error)
+}
+
+// BranchDeleteService deletes a branch from a repository. It reads the
+// repository first so it can refuse to delete the default branch.
+type BranchDeleteService interface {
+	// GetRepository returns details of a single repository.
+	GetRepository(ctx context.Context, owner, repo string) (Repository, error)
+	// DeleteBranch deletes a branch.
+	DeleteBranch(ctx context.Context, owner, repo, branch string) error
+}
+
+// IssueDeleteService permanently deletes an issue.
+type IssueDeleteService interface {
+	// DeleteIssue deletes an issue by its index number.
+	DeleteIssue(ctx context.Context, owner, repo string, index int64) error
+}
+
+// CommentDeleteService deletes an issue/pull request comment.
+type CommentDeleteService interface {
+	// DeleteComment deletes a comment by its ID.
+	DeleteComment(ctx context.Context, owner, repo string, commentID int64) error
+}
+
+// ReleaseDeleteService deletes a release (the tag remains).
+type ReleaseDeleteService interface {
+	// DeleteRelease deletes a release by its ID.
+	DeleteRelease(ctx context.Context, owner, repo string, id int64) error
+}
+
+// RepositoryDeleteService permanently deletes a repository.
+type RepositoryDeleteService interface {
+	// DeleteRepository deletes a repository by owner+name.
+	DeleteRepository(ctx context.Context, owner, repo string) error
+}

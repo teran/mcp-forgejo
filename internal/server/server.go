@@ -37,6 +37,7 @@ func registerTools(s *mcp.Server, client *forgejo.Client) {
 	registerIssueTools(s, client)
 	registerBatchAReadTools(s, client)
 	registerWriteTools(s, client)
+	registerDeleteTools(s, client)
 }
 
 // readAnnotations builds the annotation set for read-only tools (SPEC 6.0).
@@ -65,6 +66,22 @@ func writeAnnotations(title string, idempotent bool) *mcp.ToolAnnotations {
 		ReadOnlyHint:    false,
 		DestructiveHint: &destructive,
 		IdempotentHint:  idempotent,
+		OpenWorldHint:   &openWorld,
+	}
+}
+
+// deleteAnnotations builds the annotation set for destructive delete tools
+// (SPEC 6.0 / 6.3): readOnlyHint=false, destructiveHint=TRUE,
+// openWorldHint=false, idempotentHint=false (repeating a delete is never a
+// no-op).
+func deleteAnnotations(title string) *mcp.ToolAnnotations {
+	destructive := true
+	openWorld := false
+	return &mcp.ToolAnnotations{
+		Title:           title,
+		ReadOnlyHint:    false,
+		DestructiveHint: &destructive,
+		IdempotentHint:  false,
 		OpenWorldHint:   &openWorld,
 	}
 }
@@ -548,4 +565,109 @@ type releaseCreateIn struct {
 	Tag   string `json:"tag" jsonschema:"Tag name"`
 	Name  string `json:"name,omitempty" jsonschema:"Release title"`
 	Notes string `json:"notes,omitempty" jsonschema:"Release notes"`
+}
+
+// registerDeleteTools registers the Batch C delete tools (SPEC 6.3 #26–#31).
+// They are registered last (read -> write -> delete, S3). Each is destructive
+// and therefore requires confirmation, surfaced in the description.
+func registerDeleteTools(s *mcp.Server, client *forgejo.Client) {
+	mcp.AddTool(s, &mcp.Tool{
+		Name:        "forgejo_file_delete",
+		Title:       "Delete file",
+		Description: "Delete a file at path+branch with a commit message. Destructive — confirm before use.",
+		Annotations: deleteAnnotations("Delete file"),
+	}, func(ctx context.Context, _ *mcp.CallToolRequest, in fileDeleteIn) (*mcp.CallToolResult, domain.FileResult, error) {
+		res, err := application.DeleteFile(ctx, client, domain.DeleteFileInput{
+			Owner: in.Owner, Repo: in.Repo, Path: in.Path, Branch: in.Branch, Message: in.Message,
+		})
+		return nil, res, err
+	})
+
+	mcp.AddTool(s, &mcp.Tool{
+		Name:        "forgejo_branch_delete",
+		Title:       "Delete branch",
+		Description: "Delete a branch. Destructive — confirm before use; will not delete the default branch.",
+		Annotations: deleteAnnotations("Delete branch"),
+	}, func(ctx context.Context, _ *mcp.CallToolRequest, in branchDeleteIn) (*mcp.CallToolResult, any, error) {
+		err := application.DeleteBranch(ctx, client, in.Owner, in.Repo, in.Branch)
+		return nil, nil, err
+	})
+
+	mcp.AddTool(s, &mcp.Tool{
+		Name:        "forgejo_issue_delete",
+		Title:       "Delete issue",
+		Description: "Permanently delete an issue. Destructive — confirm before use.",
+		Annotations: deleteAnnotations("Delete issue"),
+	}, func(ctx context.Context, _ *mcp.CallToolRequest, in issueDeleteIn) (*mcp.CallToolResult, any, error) {
+		err := application.DeleteIssue(ctx, client, in.Owner, in.Repo, in.Index)
+		return nil, nil, err
+	})
+
+	mcp.AddTool(s, &mcp.Tool{
+		Name:        "forgejo_comment_delete",
+		Title:       "Delete comment",
+		Description: "Delete an issue/PR comment. Destructive — confirm before use.",
+		Annotations: deleteAnnotations("Delete comment"),
+	}, func(ctx context.Context, _ *mcp.CallToolRequest, in commentDeleteIn) (*mcp.CallToolResult, any, error) {
+		err := application.DeleteComment(ctx, client, in.Owner, in.Repo, in.CommentID)
+		return nil, nil, err
+	})
+
+	mcp.AddTool(s, &mcp.Tool{
+		Name:        "forgejo_release_delete",
+		Title:       "Delete release",
+		Description: "Delete a release (tag remains). Destructive — confirm before use.",
+		Annotations: deleteAnnotations("Delete release"),
+	}, func(ctx context.Context, _ *mcp.CallToolRequest, in releaseDeleteIn) (*mcp.CallToolResult, any, error) {
+		err := application.DeleteRelease(ctx, client, in.Owner, in.Repo, in.ID)
+		return nil, nil, err
+	})
+
+	mcp.AddTool(s, &mcp.Tool{
+		Name:        "forgejo_repo_delete",
+		Title:       "Delete repository",
+		Description: "Permanently delete a repository. Highly destructive — requires explicit confirmation before invoking.",
+		Annotations: deleteAnnotations("Delete repository"),
+	}, func(ctx context.Context, _ *mcp.CallToolRequest, in repoDeleteIn) (*mcp.CallToolResult, any, error) {
+		err := application.DeleteRepository(ctx, client, in.Owner, in.Repo, in.Confirm)
+		return nil, nil, err
+	})
+}
+
+type fileDeleteIn struct {
+	Owner   string `json:"owner" jsonschema:"Repository owner/namespace"`
+	Repo    string `json:"repo" jsonschema:"Repository name"`
+	Path    string `json:"path" jsonschema:"File path in the repository"`
+	Branch  string `json:"branch,omitempty" jsonschema:"Branch to delete from; defaults to the default branch"`
+	Message string `json:"message" jsonschema:"Commit message"`
+}
+
+type branchDeleteIn struct {
+	Owner  string `json:"owner" jsonschema:"Repository owner/namespace"`
+	Repo   string `json:"repo" jsonschema:"Repository name"`
+	Branch string `json:"branch" jsonschema:"Branch name to delete"`
+}
+
+type issueDeleteIn struct {
+	Owner string `json:"owner" jsonschema:"Repository owner/namespace"`
+	Repo  string `json:"repo" jsonschema:"Repository name"`
+	Index int64  `json:"index" jsonschema:"Issue index number"`
+}
+
+type commentDeleteIn struct {
+	Owner     string `json:"owner" jsonschema:"Repository owner/namespace"`
+	Repo      string `json:"repo" jsonschema:"Repository name"`
+	CommentID int64  `json:"comment_id" jsonschema:"Comment ID"`
+}
+
+type releaseDeleteIn struct {
+	Owner string `json:"owner" jsonschema:"Repository owner/namespace"`
+	Repo  string `json:"repo" jsonschema:"Repository name"`
+	ID    int64  `json:"id" jsonschema:"Release ID"`
+}
+
+type repoDeleteIn struct {
+	Owner   string `json:"owner" jsonschema:"Repository owner/namespace"`
+	Repo    string `json:"repo" jsonschema:"Repository name"`
+	Confirm bool   `json:"confirm" jsonschema:"Explicit confirmation; required to permanently delete the repository"`
 }
