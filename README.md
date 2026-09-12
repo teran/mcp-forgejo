@@ -107,6 +107,48 @@ docker run --rm -p 8080:8080 \
   mcp-forgejo --transport=http-sse
 ```
 
+### Example: STDIO
+
+Minimal configuration — the server reads `FORGEJO_URL` and `FORGEJO_TOKEN` from
+the environment and talks to the local client over stdin/stdout:
+
+```bash
+export FORGEJO_URL=https://git.example.com
+export FORGEJO_TOKEN=<pat>
+
+# Optional:
+export LOG_LEVEL=info                 # enable logging (writes to /tmp/mcp-forgejo.log, chmod 600)
+export LOG_FILENAME=/tmp/mcp-forgejo.log
+export LOG_FORMAT=text                # or "json"
+
+./mcp-forgejo --transport=stdio
+```
+
+The transport flag may be omitted — **stdio is the default** when neither
+`--transport` nor `--transport=http-sse` is given.
+
+### Example: HTTP/SSE
+
+The same env vars plus the listener host/port. Logs go to **stdout**
+(12-factor), so this mode is meant to run as a sidecar behind a reverse proxy
+that terminates TLS and enforces client auth:
+
+```bash
+export FORGEJO_URL=https://git.example.com
+export FORGEJO_TOKEN=<pat>
+export HOST=0.0.0.0
+export PORT=8080
+
+export LOG_LEVEL=info                 # enable logging (to stdout)
+export LOG_FORMAT=text                # or "json"
+
+./mcp-forgejo --transport=http-sse
+```
+
+The client connects to the MCP **streamable HTTP** endpoint served at the
+listener root (the SDK's `StreamableHTTPHandler`, see `internal/server/http.go`);
+the path is configurable in the SDK options.
+
 ### Configuration (env vars)
 
 | Env var          | Type       | Default                  | Description                          |
