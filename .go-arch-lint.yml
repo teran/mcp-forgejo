@@ -44,6 +44,8 @@ components:
     in: internal/config/**
   logging:
     in: internal/logging/**
+  e2e:
+    in: e2e/**
 
 # Vendor libraries used by specific components (allowed via `canUse` below).
 vendors:
@@ -51,6 +53,8 @@ vendors:
   logrus:      { in: [ github.com/sirupsen/logrus, github.com/sirupsen/logrus/** ] }
   envconfig:   { in: [ github.com/kelseyhightower/envconfig, github.com/kelseyhightower/envconfig/** ] }
   resty:       { in: [ resty.dev/v3, resty.dev/v3/** ] }
+  docker-testsuite: { in: github.com/teran/go-docker-testsuite/** }
+  testify:     { in: [ github.com/stretchr/testify, github.com/stretchr/testify/** ] }
 
 # Global rules. depOnAnyVendor = false keeps us honest about external deps.
 # deepScan is left OFF: the server layer intentionally wires dependencies by
@@ -114,6 +118,20 @@ deps:
   logging:
     canUse:
       - logrus
+
+  # 7. e2e is the end-to-end test stand. It builds the MCP server in-process
+  #    (infrastructure + server) and drives it with an MCP client; it also uses
+  #    the go-docker-testsuite Forgejo wrapper to boot a real container, and
+  #    testify/suite for the test harness. It is test-only and never imported by
+  #    any production component.
+  e2e:
+    mayDependOn:
+      - infrastructure
+      - server
+    canUse:
+      - mcp-sdk
+      - docker-testsuite
+      - testify
 
 # Paths excluded from dependency analysis (generated code, vendored deps).
 exclude:
