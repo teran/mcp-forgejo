@@ -32,43 +32,67 @@ branches, releases, and organizations.
 
 ## Features
 
-The server exposes **31 tools** covering the full **read → write → delete**
+The server exposes **51 tools** covering the full **read → write/update → delete**
 surface. Each is a complete use-case (no client-side chaining of low-level
 calls) and is described with full metadata (annotations + per-tool instructions)
 in `SPEC.md` §6.
 
-**Read (13)**
+**Read (19)**
 - `forgejo_repo_search` — search repositories
 - `forgejo_repo_get` — repository details
-- `forgejo_org_list` — list your organizations
 - `forgejo_repo_list_contents` — list directory contents
 - `forgejo_file_get` — read a file
 - `forgejo_diff_get` — diff between refs, or a PR diff
 - `forgejo_commit_list` — list commits
 - `forgejo_branch_list` — list branches
+- `forgejo_branch_get` — get a branch
+- `forgejo_org_list` — list your organizations
 - `forgejo_issue_list` — list issues
 - `forgejo_issue_get` — get an issue **and** its comments
 - `forgejo_pull_list` — list pull requests
 - `forgejo_pull_get` — get a PR **with** its changed files **and** checks
 - `forgejo_release_list` — list releases (or the latest)
+- `forgejo_tag_list` — list tags
+- `forgejo_milestone_list` — list milestones
+- `forgejo_label_list` — list labels
+- `forgejo_user_get` — get the current user, or a user by name
+- `forgejo_user_list` — search users
 
-**Write / Update (12)**
-- `forgejo_repo_create` — create a repository
+**Write / Update (22)**
+- `forgejo_repo_create` — create a repository (current user **or** an org)
+- `forgejo_repo_update` — update a repository
+- `forgejo_repo_fork` — fork a repository
+- `forgejo_org_create` — create an organization
 - `forgejo_file_write` — write **or** update a file in one commit
 - `forgejo_file_write_many` — write several files in one commit
 - `forgejo_branch_create` — create a branch
 - `forgejo_issue_create` — create an issue
 - `forgejo_issue_update` — update / close / reopen an issue
 - `forgejo_issue_comment_add` — add an issue comment
+- `forgejo_issue_set_labels` — replace the labels of an issue
 - `forgejo_pull_create` — create a pull request
 - `forgejo_pull_update` — update / close / reopen a PR
 - `forgejo_pull_merge` — merge a PR (merge/squash/rebase)
 - `forgejo_pull_review` — create **and** submit a PR review
 - `forgejo_release_create` — create a release
+- `forgejo_release_asset_upload` — upload a release asset
+- `forgejo_tag_create` — create a tag
+- `forgejo_milestone_create` — create a milestone
+- `forgejo_milestone_update` — update a milestone
+- `forgejo_label_create` — create a label
+- `forgejo_label_update` — update a label
 
-**Delete (6)** — destructive; these require explicit confirmation
-- `forgejo_file_delete` · `forgejo_branch_delete` · `forgejo_issue_delete`
-- `forgejo_comment_delete` · `forgejo_release_delete` · `forgejo_repo_delete`
+**Delete (10)** — destructive; these require explicit confirmation
+- `forgejo_file_delete` — delete a file
+- `forgejo_branch_delete` — delete a branch (never the default branch)
+- `forgejo_issue_delete` — delete an issue
+- `forgejo_comment_delete` — delete an issue comment
+- `forgejo_release_delete` — delete a release
+- `forgejo_repo_delete` — delete a repository
+- `forgejo_org_delete` — delete an organization
+- `forgejo_tag_delete` — delete a tag
+- `forgejo_milestone_delete` — delete a milestone
+- `forgejo_label_delete` — delete a label
 
 ## Requirements
 
