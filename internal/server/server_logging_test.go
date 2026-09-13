@@ -13,8 +13,8 @@ import (
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 	"github.com/sirupsen/logrus"
 
-	"example.com/teran/mcp-forgejo/internal/domain"
-	"example.com/teran/mcp-forgejo/internal/infrastructure/forgejo"
+	"github.com/teran/mcp-forgejo/internal/domain"
+	"github.com/teran/mcp-forgejo/internal/infrastructure/forgejo"
 )
 
 // captureLogger returns a logrus logger writing JSON to a byte buffer so tests

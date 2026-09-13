@@ -18,8 +18,8 @@ import (
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 
-	"example.com/teran/mcp-forgejo/internal/domain"
-	"example.com/teran/mcp-forgejo/internal/infrastructure/forgejo"
+	"github.com/teran/mcp-forgejo/internal/domain"
+	"github.com/teran/mcp-forgejo/internal/infrastructure/forgejo"
 )
 
 // mockForgejoDelete answers the delete endpoints used by Batch C tools, plus

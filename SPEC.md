@@ -138,7 +138,7 @@ Layers communicate through **domain interfaces**; `application` and `infrastruct
 - **S3 — tool priority order.** Tools are grouped and registered **read → write/update → delete** (see §6).
 - **S4 — no local filesystem access.** The server does not touch the local filesystem; it only talks to the remote Forgejo API over HTTP. Consequently **`ALLOW_DIRS` is not required and is omitted** from config (see §3). There is no local path to scope, so N3 is vacuous by design.
 - **S5 / N8 — fix, don't suppress.** gosec and govulncheck findings are **fixed**, never suppressed via blanket exclusions or default `#nosec`. Findings block the build (C4/C5).
-- **S6 / N20 — module name is a placeholder, never a real public/external domain.** `mcp-forgejo` is hosted on an internal Forgejo, so the real upstream location is kept private as a **security measure**. The module/package name uses the **placeholder** `example.com/teran/mcp-forgejo` and MUST NOT be rewritten to a real public/external domain such as `github.com/...`.
+- **S6 / N20 — module path matches the public location.** The module/package name `github.com/teran/mcp-forgejo` matches the canonical public repository location and must be kept in sync with it. It is not a placeholder.
 - **S7 — reverse-proxy authn/authz for HTTP/SSE.** The MCP HTTP/SSE layer offers **no authentication of its own**: the server holds the PAT in its environment and uses it to call Forgejo, but any client that can reach `HOST:PORT` can drive every tool with the operator's privileges — including destructive ones (`forgejo_repo_delete`, `forgejo_pull_merge`, …). For any HTTP/SSE deployment the listener **MUST** sit behind a reverse proxy that enforces client authentication/authorization (e.g. mTLS, OIDC, network ACL, or a proxy token) before requests reach the server. Additionally, run the PAT under a **dedicated low-privilege Forgejo user** scoped to only the operations the team actually needs. In **stdio** mode the client is trusted by construction (the local process that spawned the server), so this does not apply.
 
 ---
@@ -310,7 +310,7 @@ The following MUST / MUST NOT are satisfied by this SPEC and scaffold:
 - **M4** every tool described with title/annotations/instructions (§6); **M5** tools are complete use cases (§6).
 - **C1** coverage ≥ 95% gate (fails build); **C2** golangci-lint; **C3** `-race`; **C4** gosec; **C5** govulncheck; **C6** go-arch-lint authored + enforced; **C7** gremlins hard gate (§8).
 - **T1** TDD workflow referenced (§9).
-- **S1** TLS never in-server; **S2** no secret leakage + redaction; **S3** tools grouped read→write→delete; **S4** no local FS → `ALLOW_DIRS` omitted & explained; **S5** fix-don't-suppress; **S6** local-only module name (§5).
+- **S1** TLS never in-server; **S2** no secret leakage + redaction; **S3** tools grouped read→write→delete; **S4** no local FS → `ALLOW_DIRS` omitted & explained; **S5** fix-don't-suppress; **S6** module path matches the public location (§5).
 - **A1** DDD/Clean architecture with layout, tool registry, transport wiring, config, error handling (§4).
 - **D1** README English; **D2** SPEC/AGENTS strictly English; **D3** README begins with the AI-Generated Content disclaimer; **D4** full badge set.
 - **L1–L5** logging channel per transport, `LOG_LEVEL`-gated, `LOG_FILENAME`/`LOG_FORMAT` (§7); **L6** startup banner first line per transport.

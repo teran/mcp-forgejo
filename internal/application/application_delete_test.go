@@ -11,7 +11,7 @@ import (
 	"errors"
 	"testing"
 
-	"example.com/teran/mcp-forgejo/internal/domain"
+	"github.com/teran/mcp-forgejo/internal/domain"
 )
 
 // --- stubs for the new domain delete interfaces -----------------------------

@@ -17,8 +17,8 @@ import (
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 
-	"example.com/teran/mcp-forgejo/internal/domain"
-	"example.com/teran/mcp-forgejo/internal/infrastructure/forgejo"
+	"github.com/teran/mcp-forgejo/internal/domain"
+	"github.com/teran/mcp-forgejo/internal/infrastructure/forgejo"
 )
 
 // mockForgejoWrite answers the write endpoints used by Batch B tools. Routing

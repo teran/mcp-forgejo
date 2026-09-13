@@ -23,8 +23,8 @@ import (
 	"time"
 	"unicode/utf8"
 
-	"example.com/teran/mcp-forgejo/internal/domain"
 	"github.com/sirupsen/logrus"
+	"github.com/teran/mcp-forgejo/internal/domain"
 	"resty.dev/v3"
 )
 

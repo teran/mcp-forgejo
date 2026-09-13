@@ -11,8 +11,8 @@ import (
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 	"github.com/sirupsen/logrus"
 
-	"example.com/teran/mcp-forgejo/internal/config"
-	"example.com/teran/mcp-forgejo/internal/infrastructure/forgejo"
+	"github.com/teran/mcp-forgejo/internal/config"
+	"github.com/teran/mcp-forgejo/internal/infrastructure/forgejo"
 )
 
 // setBaseEnv sets the required config env vars.

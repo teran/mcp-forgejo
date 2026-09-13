@@ -5,7 +5,7 @@ import (
 	"errors"
 	"testing"
 
-	"example.com/teran/mcp-forgejo/internal/domain"
+	"github.com/teran/mcp-forgejo/internal/domain"
 )
 
 type stubRepoService struct {

@@ -21,9 +21,8 @@ instance over HTTP; it **never touches the local filesystem** (so there is **no
 ## Hard facts you must not change
 
 - **Language:** Go **1.27.0** (`go.mod` `go 1.27.0`; `GO_VERSION: "1.27"` in CI).
-- **Module path:** `example.com/teran/mcp-forgejo` — a **placeholder** for the
-  internal-only path (S6/N20). The real upstream location is kept private; do
-  not rewrite it to a real public/external domain such as `github.com/...`.
+- **Module path:** `github.com/teran/mcp-forgejo` (matches the canonical public
+  repository location). Keep it in sync with the repository.
 - **SDK:** `github.com/modelcontextprotocol/go-sdk` (official; never hand-roll).
 - **Logger:** `logrus` only. Channel per transport (L1): HTTP/SSE → stdout;
   stdio → file (`/tmp/mcp-forgejo.log`, chmod 600), **never** stdout.

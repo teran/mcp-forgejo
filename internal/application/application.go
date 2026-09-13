@@ -8,7 +8,7 @@ import (
 	"errors"
 	"strings"
 
-	"example.com/teran/mcp-forgejo/internal/domain"
+	"github.com/teran/mcp-forgejo/internal/domain"
 )
 
 // GetRepository returns a single repository by owner+name.

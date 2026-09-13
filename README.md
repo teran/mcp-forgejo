@@ -13,10 +13,9 @@
 [![gremlins](https://img.shields.io/badge/gremlins-passing-brightgreen)](https://github.com/teran/mcp-forgejo/actions/workflows/ci.yml)
 
 > **Badge note:** a `pkg.go.dev` / "Go Reference" badge is **intentionally
-> omitted**. The module path `example.com/...` is a **placeholder** for the
-> internal-only path (see `SPEC.md` §5 S6) and is not published to pkg.go.dev,
-> so such a badge would never resolve and would leak the internal module
-> location. The **Test Coverage**, **gosec**, **govulncheck** and **gremlins**
+> omitted** to keep the README focused on the CI-enforced quality gates; the
+> module path is `github.com/teran/mcp-forgejo`. The **Test Coverage**,
+> **gosec**, **govulncheck** and **gremlins**
 > badges above are **placeholders wired to the CI source** — the checks they
 > represent are enforced in `.github/workflows/ci.yml` (the `coverage` gate
 > requires **≥ 95%**, gosec/govulncheck findings are fixed-not-suppressed, and

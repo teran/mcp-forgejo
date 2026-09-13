@@ -11,9 +11,9 @@ import (
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 	"github.com/sirupsen/logrus"
 
-	"example.com/teran/mcp-forgejo/internal/application"
-	"example.com/teran/mcp-forgejo/internal/domain"
-	"example.com/teran/mcp-forgejo/internal/infrastructure/forgejo"
+	"github.com/teran/mcp-forgejo/internal/application"
+	"github.com/teran/mcp-forgejo/internal/domain"
+	"github.com/teran/mcp-forgejo/internal/infrastructure/forgejo"
 )
 
 // Implementation metadata advertised during MCP initialization.

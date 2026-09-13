@@ -12,7 +12,7 @@ import (
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 	"github.com/sirupsen/logrus"
 
-	"example.com/teran/mcp-forgejo/internal/domain"
+	"github.com/teran/mcp-forgejo/internal/domain"
 )
 
 // newRequestID returns a 16-char lowercase hex string derived from 8 random

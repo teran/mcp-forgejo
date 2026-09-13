@@ -1,4 +1,4 @@
-module example.com/teran/mcp-forgejo
+module github.com/teran/mcp-forgejo
 
 go 1.27.0
 

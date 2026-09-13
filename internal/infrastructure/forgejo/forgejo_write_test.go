@@ -13,7 +13,7 @@ import (
 	"strings"
 	"testing"
 
-	"example.com/teran/mcp-forgejo/internal/domain"
+	"github.com/teran/mcp-forgejo/internal/domain"
 )
 
 // decodeBody reads the request body as JSON into a map for field assertions.
