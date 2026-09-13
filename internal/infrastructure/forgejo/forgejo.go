@@ -594,14 +594,33 @@ func (c *Client) CreatePullReview(ctx context.Context, owner, repo string, index
 
 // SubmitPullReview implements domain.PullRequestWriteService
 // (repoSubmitPullReview).
-func (c *Client) SubmitPullReview(ctx context.Context, owner, repo string, index, reviewID int64, event string) (domain.Review, error) {
+func (c *Client) SubmitPullReview(ctx context.Context, owner, repo string, index, reviewID int64, body, event string) (domain.Review, error) {
 	path := fmt.Sprintf("/api/v1/repos/%s/%s/pulls/%s/reviews/%s", pathEscape(owner), pathEscape(repo), strconv.FormatInt(index, 10), strconv.FormatInt(reviewID, 10))
 	req := struct {
 		Event string `json:"event"`
-	}{Event: event}
+		Body  string `json:"body"`
+	}{Event: reviewEventForgejo(event), Body: body}
 	var out domain.Review
 	err := c.doJSON(ctx, http.MethodPost, path, req, &out)
 	return out, err
+}
+
+// reviewEventForgejo normalizes the MCP-facing review event vocabulary
+// (approve / comment / request_changes) onto Forgejo's review-event enum
+// (APPROVED / COMMENT / REQUEST_CHANGES). Any value Forgejo does not recognise
+// would otherwise be left PENDING, which Forgejo rejects with "review stay
+// pending".
+func reviewEventForgejo(event string) string {
+	switch strings.ToLower(event) {
+	case "approve", "approved":
+		return "APPROVED"
+	case "comment":
+		return "COMMENT"
+	case "request_changes", "requestchanges":
+		return "REQUEST_CHANGES"
+	default:
+		return event
+	}
 }
 
 // CreateRelease implements domain.ReleaseWriteService (repoCreateRelease).

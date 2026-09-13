@@ -664,7 +664,7 @@ func TestSubmitPullReview(t *testing.T) {
 	})
 	c, _ := newTestServer(t, handler)
 
-	review, err := c.SubmitPullReview(context.Background(), "acme", "demo", 5, 11, "APPROVED")
+	review, err := c.SubmitPullReview(context.Background(), "acme", "demo", 5, 11, "looks good", "APPROVED")
 	if err != nil {
 		t.Fatalf("SubmitPullReview() error = %v", err)
 	}
@@ -674,7 +674,7 @@ func TestSubmitPullReview(t *testing.T) {
 	if gotPath != "/api/v1/repos/acme/demo/pulls/5/reviews/11" {
 		t.Errorf("path = %q", gotPath)
 	}
-	if gotBody["event"] != "APPROVED" {
+	if gotBody["event"] != "APPROVED" || gotBody["body"] != "looks good" {
 		t.Errorf("body = %+v", gotBody)
 	}
 	if review.State != "APPROVED" {
@@ -775,7 +775,7 @@ func TestWriteMethodsServerError(t *testing.T) {
 		{"MergePullRequest", func() error { return c.MergePullRequest(context.Background(), "o", "r", 1, "merge") }},
 		{"CreatePullReview", func() error { _, err := c.CreatePullReview(context.Background(), "o", "r", 1, "b"); return err }},
 		{"SubmitPullReview", func() error {
-			_, err := c.SubmitPullReview(context.Background(), "o", "r", 1, 1, "APPROVED")
+			_, err := c.SubmitPullReview(context.Background(), "o", "r", 1, 1, "b", "APPROVED")
 			return err
 		}},
 		{"CreateRelease", func() error {

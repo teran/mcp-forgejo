@@ -96,9 +96,10 @@ type Repository struct {
 	UpdatedAt     string `json:"updated_at"`
 }
 
-// Tag is a git tag of a repository.
+// Tag is a git tag of a repository. Forgejo returns the tag's `id` as the
+// commit SHA it points to (a string), not a numeric identifier.
 type Tag struct {
-	ID         int64  `json:"id"`
+	ID         string `json:"id"`
 	Name       string `json:"name"`
 	SHA        string `json:"sha"`
 	Message    string `json:"message"`
@@ -611,8 +612,9 @@ type PullRequestWriteService interface {
 	MergePullRequest(ctx context.Context, owner, repo string, index int64, method string) error
 	// CreatePullReview creates a pending pull request review.
 	CreatePullReview(ctx context.Context, owner, repo string, index int64, body string) (Review, error)
-	// SubmitPullReview submits an existing review with a final event.
-	SubmitPullReview(ctx context.Context, owner, repo string, index int64, reviewID int64, event string) (Review, error)
+	// SubmitPullReview submits an existing review with a final event, carrying
+	// the review body (Forgejo requires a body for submitted reviews).
+	SubmitPullReview(ctx context.Context, owner, repo string, index int64, reviewID int64, body, event string) (Review, error)
 }
 
 // CreateReleaseInput carries the fields needed to create a release.

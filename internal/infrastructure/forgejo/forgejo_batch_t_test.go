@@ -43,8 +43,8 @@ func TestListTags(t *testing.T) {
 	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		gotMethod, gotPath, gotAuth = r.Method, r.URL.Path, r.Header.Get("Authorization")
 		_, _ = w.Write([]byte(`[
-			{"name":"v1.0","id":1,"sha":"abc123","message":"release 1","tarball_url":"https://x/t/v1.0.tar.gz","zipball_url":"https://x/z/v1.0.zip"},
-			{"name":"v2.0","id":2,"sha":"def456","message":"release 2","tarball_url":"https://x/t/v2.0.tar.gz","zipball_url":"https://x/z/v2.0.zip"}
+			{"name":"v1.0","id":"abc123","sha":"abc123","message":"release 1","tarball_url":"https://x/t/v1.0.tar.gz","zipball_url":"https://x/z/v1.0.zip"},
+			{"name":"v2.0","id":"def456","sha":"def456","message":"release 2","tarball_url":"https://x/t/v2.0.tar.gz","zipball_url":"https://x/z/v2.0.zip"}
 		]`))
 	})
 	c, _ := newTestServer(t, handler)
@@ -65,7 +65,7 @@ func TestListTags(t *testing.T) {
 	if len(tags) != 2 {
 		t.Fatalf("len(tags) = %d, want 2: %+v", len(tags), tags)
 	}
-	if tags[0].Name != "v1.0" || tags[0].ID != 1 || tags[0].SHA != "abc123" || tags[0].Message != "release 1" {
+	if tags[0].Name != "v1.0" || tags[0].ID != "abc123" || tags[0].SHA != "abc123" || tags[0].Message != "release 1" {
 		t.Errorf("tags[0] = %+v", tags[0])
 	}
 	if tags[0].TarballURL != "https://x/t/v1.0.tar.gz" || tags[0].ZipballURL != "https://x/z/v1.0.zip" {
@@ -100,7 +100,7 @@ func TestCreateTag(t *testing.T) {
 	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		gotMethod, gotPath = r.Method, r.URL.Path
 		gotBody = decodeBody(t, r)
-		_, _ = w.Write([]byte(`{"name":"v1.0","id":1,"sha":"abc123","message":"release 1","tarball_url":"https://x/t/v1.0.tar.gz","zipball_url":"https://x/z/v1.0.zip"}`))
+		_, _ = w.Write([]byte(`{"name":"v1.0","id":"abc123","sha":"abc123","message":"release 1","tarball_url":"https://x/t/v1.0.tar.gz","zipball_url":"https://x/z/v1.0.zip"}`))
 	})
 	c, _ := newTestServer(t, handler)
 

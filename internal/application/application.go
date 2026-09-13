@@ -228,7 +228,7 @@ func ReviewPullRequest(ctx context.Context, svc domain.PullRequestWriteService, 
 	if err != nil {
 		return domain.Review{}, err
 	}
-	return svc.SubmitPullReview(ctx, owner, repo, index, review.ID, event)
+	return svc.SubmitPullReview(ctx, owner, repo, index, review.ID, body, event)
 }
 
 // CreateRelease creates a release for an existing tag (SPEC 6.2 #25).

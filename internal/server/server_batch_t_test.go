@@ -31,12 +31,12 @@ func mockForgejoBatchT() http.Handler {
 		switch {
 		case m == http.MethodGet && p == "/api/v1/repos/acme/demo/tags":
 			_, _ = w.Write([]byte(`[
-				{"name":"v1.0","id":1,"sha":"abc123","message":"release 1","tarball_url":"https://x/t/v1.0.tar.gz","zipball_url":"https://x/z/v1.0.zip"},
-				{"name":"v2.0","id":2,"sha":"def456","message":"release 2","tarball_url":"https://x/t/v2.0.tar.gz","zipball_url":"https://x/z/v2.0.zip"}
+				{"name":"v1.0","id":"abc123","sha":"abc123","message":"release 1","tarball_url":"https://x/t/v1.0.tar.gz","zipball_url":"https://x/z/v1.0.zip"},
+				{"name":"v2.0","id":"def456","sha":"def456","message":"release 2","tarball_url":"https://x/t/v2.0.tar.gz","zipball_url":"https://x/z/v2.0.zip"}
 			]`))
 			return
 		case m == http.MethodPost && p == "/api/v1/repos/acme/demo/tags":
-			_, _ = w.Write([]byte(`{"name":"v3.0","id":3,"sha":"aaa111","message":"release 3","tarball_url":"https://x/t/v3.0.tar.gz","zipball_url":"https://x/z/v3.0.zip"}`))
+			_, _ = w.Write([]byte(`{"name":"v3.0","id":"aaa111","sha":"aaa111","message":"release 3","tarball_url":"https://x/t/v3.0.tar.gz","zipball_url":"https://x/z/v3.0.zip"}`))
 			return
 		case m == http.MethodDelete && p == "/api/v1/repos/acme/demo/tags/v1.0":
 			w.WriteHeader(http.StatusNoContent)

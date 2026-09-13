@@ -171,9 +171,10 @@ func (s *stubPullWriteService) CreatePullReview(_ context.Context, _, _ string, 
 	return domain.Review{ID: 11, State: "PENDING"}, nil
 }
 
-func (s *stubPullWriteService) SubmitPullReview(_ context.Context, _, _ string, _ int64, reviewID int64, event string) (domain.Review, error) {
+func (s *stubPullWriteService) SubmitPullReview(_ context.Context, _, _ string, _ int64, reviewID int64, body, event string) (domain.Review, error) {
 	s.reviewSubmitCalls++
 	s.gotReviewID = reviewID
+	s.gotBody = body
 	s.gotEvent = event
 	return domain.Review{ID: 11, State: event}, nil
 }
@@ -673,6 +674,9 @@ func TestReviewPullRequestCreatesThenSubmits(t *testing.T) {
 	}
 	if svc.gotEvent != "APPROVED" {
 		t.Errorf("event = %q, want APPROVED", svc.gotEvent)
+	}
+	if svc.gotBody != "looks good" {
+		t.Errorf("submit body = %q, want %q", svc.gotBody, "looks good")
 	}
 	if review.State != "APPROVED" {
 		t.Errorf("review = %+v", review)
