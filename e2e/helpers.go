@@ -75,9 +75,9 @@ func textOf(res *mcp.CallToolResult) string {
 
 // truncate bounds the length of a string used in error messages.
 func truncate(s string) string {
-	const max = 500
-	if len(s) > max {
-		return s[:max] + "..."
+	const maxLen = 500
+	if len(s) > maxLen {
+		return s[:maxLen] + "..."
 	}
 	return s
 }
