@@ -114,8 +114,12 @@ jobs:
       - name: Install govulncheck
         run: go install golang.org/x/vuln/cmd/govulncheck@latest
 
+      # Scan only production packages. The e2e suite pulls docker/docker
+      # (test-only, via go-docker-testsuite) which is not linked into the
+      # production binary and has no fix (GO-2026-4887/GO-2026-4883, Fixed in N/A).
+      # See SPEC.md §5 S5 policy.
       - name: Run govulncheck
-        run: govulncheck ./...
+        run: govulncheck ./cmd/... ./internal/...
 
   # ---- Dependency architecture (go-arch-lint) ----
   arch:
