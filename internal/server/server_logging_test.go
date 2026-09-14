@@ -397,6 +397,26 @@ func TestRequestContextMiddlewareLogsToolCall(t *testing.T) {
 	}
 }
 
+// TestRequestContextMiddlewareLogsOutBytes verifies the middleware computes a
+// non-zero out_bytes from a non-nil tool result (kills the result==nil and
+// marshal-error negation mutants in the tool-call branch).
+func TestRequestContextMiddlewareLogsOutBytes(t *testing.T) {
+	log, buf := captureLogger(t)
+	next := func(ctx context.Context, _ string, _ mcp.Request) (mcp.Result, error) {
+		return &mcp.CallToolResult{
+			Content: []mcp.Content{&mcp.TextContent{Text: "hello"}},
+		}, nil
+	}
+	wrapped := requestContextMiddleware(log)(next)
+	if _, err := wrapped(context.Background(), "tools/call", callToolRequest("forgejo_repo_get", `{}`, nil)); err != nil {
+		t.Fatalf("middleware error = %v", err)
+	}
+	m := lastJSONLine(t, buf)
+	if out, ok := m["out_bytes"].(float64); !ok || out <= 0 {
+		t.Errorf("out_bytes = %v, want > 0", m["out_bytes"])
+	}
+}
+
 // TestRequestContextMiddlewareNoLogForNonTool verifies non-tool methods do not
 // produce a tool-call log line.
 func TestRequestContextMiddlewareNoLogForNonTool(t *testing.T) {
