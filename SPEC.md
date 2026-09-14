@@ -129,12 +129,26 @@ Errors are **logged** at an appropriate level (transient at warn, others at info
 
 Layers communicate through **domain interfaces**; `application` and `infrastructure` never import each other directly.
 
+### 4.6 State model (X01)
+
+`mcp-forgejo` is a **stateless** server (X01):
+
+- Every tool call is a **self-contained HTTP request** to the remote Forgejo instance; no request depends on any state produced by a previous one.
+- All mutable state — repositories, issues, PRs, releases, tags, milestones, labels — is **held by Forgejo** and read/written over its REST API. The server holds no mirror of it.
+- The only process-scoped values are **immutable configuration** (`FORGEJO_URL`, `FORGEJO_TOKEN`, logging/transport settings) loaded once at startup and never mutated at runtime.
+- There is **no local storage, database, or filesystem state** (S4), hence **no migration step, no schema, and no persistence layer** to reason about.
+- Consequently the **MCP session/request lifecycle semantics (X04/X05) are not applicable**: there is no session-scoped or server-scoped mutable state to share, snapshot, or reset. Correlation IDs (`request_id`) and client-IP (`source`) are derived per-request for logging only (L9/G11) and carry no state.
+
+Because the server is stateless, scaling (e.g. multiple HTTP/SSE replicas behind a load balancer) is trivial: any replica can serve any request with no shared state.
+
 ---
 
 ## 5. Security (S1–S6)
 
 - **S1 / N1 — TLS never in-server.** TLS is **NEVER implemented inside the server** for the HTTP/SSE transport. The HTTP/SSE listener serves plain HTTP; TLS termination is always the **reverse proxy's** job (nginx / Caddy / ingress) in front of the container. No in-server TLS code, certificates, or key handling exists or is planned.
 - **S2 / N2 — data hygiene / redaction.** The `FORGEJO_TOKEN` (and any credentials/passwords) are **never** echoed in logs, tool outputs, error messages, or debug dumps. The PAT is read into config once and used only as the outbound `Authorization: token <PAT>` header. Tool output contracts contain no token field; any server string that could embed credentials is redacted by a shared helper before being returned or logged.
+  - **Redaction is centralized in helpers, not per-field tags (S02).** Because no API response or request struct carries a token field (the PAT is only ever an outbound header, never deserialized into a struct), redaction is **not** implemented via per-field `secret:"true"`-style struct tags. Instead it is centralized in two shared helpers that every logging/error path funnels through: `domain.Redact(s, secret)` (scrubs a string against the PAT before it is surfaced in an error or log) and `redactArgs(raw)` (in `internal/server/session.go`, which replaces sensitive tool-call argument keys — `token`, `password`, `passwd`, `secret`, `apikey`, `access_key`, `private_key`, `authorization`, `cookie`, `pat` — with `[REDACTED]` before logging, matched case-insensitively). The single `FORGEJO_TOKEN` config field therefore does not need a redaction tag (and envconfig ignores struct tags anyway); the helpers are the single source of truth for data hygiene.
+- **S9 / N23 — control-character sanitization of free text.** Tool results that return **free-form text** captured from Forgejo (`forgejo_diff_get`/`forgejo_pull_diff` → `Diff.Text`, and `forgejo_file_get` → `File.Content`) are passed through `stripControl` (in `internal/infrastructure/forgejo/forgejo.go`) before being returned. `stripControl` removes ANSI escape sequences and C0 control characters (preserving the structural whitespace `\n`, `\t`, `\r`) so that a client rendering the text verbatim cannot be driven by terminal-control injection embedded in upstream content (S09/N23).
 - **S3 — tool priority order.** Tools are grouped and registered **read → write/update → delete** (see §6).
 - **S4 — no local filesystem access.** The server does not touch the local filesystem; it only talks to the remote Forgejo API over HTTP. Consequently **`ALLOW_DIRS` is not required and is omitted** from config (see §3). There is no local path to scope, so N3 is vacuous by design.
 - **S5 / N8 — fix, don't suppress.** gosec and govulncheck findings are **fixed**, never suppressed via blanket exclusions or default `#nosec`. Findings block the build (C4/C5). Where a finding **cannot** be fixed — e.g. a **test-only** dependency that is not linked into the production binary and has no upstream fix — it is excluded by **scoping the scan to production packages** (`govulncheck ./cmd/... ./internal/...`) rather than suppressing the finding, and the exclusion is documented here with its justification. Current justified exclusion: the e2e suite depends on `github.com/docker/docker` (pulled transitively via `go-docker-testsuite`) to run a real Forgejo container; it is **not** part of the release binary (`go list -deps ./cmd/mcp-forgejo` contains no `docker/*`), and the two findings (GO-2026-4887, GO-2026-4883) have **Fixed in: N/A**.
@@ -270,8 +284,11 @@ The Go profile is enforced in CI (`.github/workflows/ci.yml`) and locally:
 | Lint + format | `golangci-lint run ./...` (gofmt/gofumpt) | C2 |
 | Static security | `gosec ./...` — findings **fixed** | C4/N8 |
 | Vuln audit | `govulncheck ./cmd/... ./internal/...` — prod findings **fixed**; test-only deps with no fix excluded (see S5) | C5/N8 |
+| Secret scan (git history) | `gitleaks detect --source . --redact --verbose` over **full history** (`actions/checkout@v4` + `fetch-depth: 0`) — findings **fixed**, never suppressed; no `continue-on-error` | N28/C03 |
 | Architecture | `go-arch-lint check` (`.go-arch-lint.yml` authored) | C6 |
-| **Mutation testing** | `gremlins unleash . --threshold-efficacy=90 --threshold-mcover=0` | **C7/N15/N19 — HARD GATE, fails the build** (no `continue-on-error`; run from the module root `.`, not `./...`) |
+| **Mutation testing** | `gremlins unleash . --threshold-efficacy=90 --threshold-mcover=30` | **C7/N15/N19 — HARD GATE, fails the build** (no `continue-on-error`; run from the module root `.`, not `./...`) |
+
+> **Gremlins mutant-coverage deviation (documented).** `--threshold-mcover` is set to **30** (raised from 0), **not** the canonical 80 goal, because of gremlins 0.6.x's per-mutant timeout behavior on this slow suite: the timeout is derived from the baseline suite time, so in the CI-equivalent (warm Go test cache) run the majority of mutants report "Timed out" and are excluded from the coverage/efficacy accounting, capping reported mutant coverage near **30–35%**. With a cold cache gremlins actually exercises ~91% of mutants, but then ~24 live request-core + e2e-helper mutants pin real efficacy at ~88.7% — below the 90 efficacy gate (which must stay ≥ 90). **Plan to reach 80:** kill those live mutants (restoring efficacy ≥ 90) and raise `--timeout-coefficient` so the timed-out mutants are actually exercised. In the meantime the threshold is set to a value the current gate reliably achieves, and the intent to move it toward 80 is tracked here and in AGENTS.md.
 
 **Container image (Hybrid → R1/N17):** `.github/workflows/images.yml` builds & publishes the image. Tags:
 
@@ -310,8 +327,8 @@ The following MUST / MUST NOT are satisfied by this SPEC and scaffold:
 - **M4** every tool described with title/annotations/instructions (§6); **M5** tools are complete use cases (§6).
 - **C1** coverage ≥ 95% gate (fails build); **C2** golangci-lint; **C3** `-race`; **C4** gosec; **C5** govulncheck; **C6** go-arch-lint authored + enforced; **C7** gremlins hard gate (§8).
 - **T1** TDD workflow referenced (§9).
-- **S1** TLS never in-server; **S2** no secret leakage + redaction; **S3** tools grouped read→write→delete; **S4** no local FS → `ALLOW_DIRS` omitted & explained; **S5** fix-don't-suppress; **S6** module path matches the public location (§5).
-- **A1** DDD/Clean architecture with layout, tool registry, transport wiring, config, error handling (§4).
+- **S1** TLS never in-server; **S2** no secret leakage + redaction (centralized helpers, not per-field tags — S02); **S3** tools grouped read→write→delete; **S4** no local FS → `ALLOW_DIRS` omitted & explained; **S5** fix-don't-suppress; **S6** module path matches the public location (§5); **S9** control-character sanitization of free text (S09/N23, §5).
+- **A1** DDD/Clean architecture with layout, tool registry, transport wiring, config, error handling (§4); **X01** stateless state model with no local storage/migrations (§4.6).
 - **D1** README English; **D2** SPEC/AGENTS strictly English; **D3** README begins with the AI-Generated Content disclaimer; **D4** full badge set.
 - **L1–L5** logging channel per transport, `LOG_LEVEL`-gated, `LOG_FILENAME`/`LOG_FORMAT` (§7); **L6** startup banner first line per transport.
 - **B1** binary release on `v*` tags via GoReleaser; **B2** ldflags-embedded build metadata (`appName`/`appVersion`/`appCommitHash`/`appTimestamp`); **B4** image reuses the binary, never recompiles; **B5** banner format (§7, §8).

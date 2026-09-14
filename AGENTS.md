@@ -50,9 +50,21 @@ go test -coverprofile=cover.out -covermode=atomic ./...
 go tool cover -func=cover.out | awk '/^total:/ {print $3}'   # must be >= 95%
 gosec ./...                             # static security; findings FIXED, not suppressed
 govulncheck ./...                       # vuln audit; findings FIXED, not suppressed
+gitleaks detect --source . --redact --verbose   # secret scan over git history (full clone); findings FIXED
 go-arch-lint check                      # dependency rules (.go-arch-lint.yml)
-gremlins unleash . --threshold-efficacy=90 --threshold-mcover=0  # HARD GATE
+gremlins unleash . --threshold-efficacy=90 --threshold-mcover=30  # HARD GATE
 ```
+
+> **Gremlins `--threshold-mcover` = 30 (documented deviation from 80).** Mutant
+> coverage is capped near **30–35%** because gremlins 0.6.x derives its
+> per-mutant timeout from the baseline suite time, so on this slow suite most
+> mutants report "Timed out" and are excluded from the coverage/efficacy
+> accounting in the CI-equivalent (warm cache) run. With a cold cache gremlins
+> tests ~91% of mutants, but ~24 live request-core + e2e-helper mutants then
+> pin real efficacy at ~88.7% — below the 90 efficacy gate (which must stay
+> ≥ 90). **To reach 80:** kill those live mutants (restore efficacy ≥ 90) and
+> raise `--timeout-coefficient` so the timed-out mutants are actually
+> exercised. See SPEC.md §8.
 
 ## Rules
 
@@ -72,7 +84,7 @@ gremlins unleash . --threshold-efficacy=90 --threshold-mcover=0  # HARD GATE
 - **Gremlins:** mutation testing is a **hard gate** — survivors fail the build.
   If a mutation survives, your tests are too weak; strengthen them. Never set
   `continue-on-error` on the gremlins job. The efficacy threshold **must be > 0**
-  (`gremlins unleash . --threshold-efficacy=90 --threshold-mcover=0`): with
+  (`gremlins unleash . --threshold-efficacy=90 --threshold-mcover=30`): with
   `--threshold-efficacy=0` gremlins 0.6.x never fails on survivors (its `assess()`
   only fails when the threshold is positive), which would make the gate a paper
   gate. Run on the module root `.`, not `./...` (which finds no mutants in
