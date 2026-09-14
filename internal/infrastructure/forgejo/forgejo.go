@@ -199,14 +199,15 @@ func (c *Client) SearchRepos(ctx context.Context, q, topic, sort, order string, 
 }
 
 // GetDiff implements domain.DiffService. The compare endpoint returns a plain
-// text unified diff, so the body is read through the text path, not JSON.
+// text unified diff, so the body is read through the text path, not JSON. The
+// text is control-sanitized before being surfaced (S9/N23).
 func (c *Client) GetDiff(ctx context.Context, owner, repo, basehead string) (domain.Diff, error) {
 	path := fmt.Sprintf("/api/v1/repos/%s/%s/compare/%s", pathEscape(owner), pathEscape(repo), pathEscape(basehead))
 	text, err := c.doText(ctx, http.MethodGet, path, nil)
 	if err != nil {
 		return domain.Diff{}, err
 	}
-	return domain.Diff{BaseHead: basehead, Text: text}, nil
+	return domain.Diff{BaseHead: basehead, Text: stripControl(text)}, nil
 }
 
 // GetPullDiff implements domain.DiffService. The pull request diff endpoint
@@ -217,7 +218,7 @@ func (c *Client) GetPullDiff(ctx context.Context, owner, repo string, index int6
 	if err != nil {
 		return domain.Diff{}, err
 	}
-	return domain.Diff{BaseHead: "", Text: text}, nil
+	return domain.Diff{BaseHead: "", Text: stripControl(text)}, nil
 }
 
 // ListCommits implements domain.CommitService. Forgejo nests the message and
@@ -1049,7 +1050,8 @@ type createReleaseRequest struct {
 // decodeFile converts a raw contents response into a domain.File, base64
 // decoding the content and detecting non-UTF-8 (binary) blobs. JSON string
 // decoding already normalizes invalid UTF-8 for the non-base64 path, so the
-// binary check only applies to base64-decoded bytes.
+// binary check only applies to base64-decoded bytes. Surfaced text is
+// control-sanitized (S9/N23).
 func decodeFile(raw contentResponse) domain.File {
 	if raw.Encoding == "base64" {
 		data, err := base64.StdEncoding.DecodeString(raw.Content)
@@ -1061,9 +1063,60 @@ func decodeFile(raw contentResponse) domain.File {
 		if !utf8.Valid(data) {
 			return domain.File{Binary: true, SHA: raw.SHA, Encoding: raw.Encoding, Size: raw.Size}
 		}
-		return domain.File{Content: string(data), SHA: raw.SHA, Encoding: raw.Encoding, Size: raw.Size}
+		return domain.File{Content: stripControl(string(data)), SHA: raw.SHA, Encoding: raw.Encoding, Size: raw.Size}
 	}
-	return domain.File{Content: raw.Content, SHA: raw.SHA, Encoding: raw.Encoding, Size: raw.Size}
+	return domain.File{Content: stripControl(raw.Content), SHA: raw.SHA, Encoding: raw.Encoding, Size: raw.Size}
+}
+
+// stripControl removes ANSI escape sequences and C0 control characters from
+// free-text fields returned to MCP clients (S9/N23), preserving the structural
+// whitespace \n, \t and \r so diffs and file contents stay readable. This
+// guards clients that render returned text verbatim against terminal-control
+// injection.
+func stripControl(s string) string {
+	if s == "" {
+		return ""
+	}
+	var b strings.Builder
+	b.Grow(len(s))
+	for i := 0; i < len(s); i++ {
+		c := s[i]
+		if c == 0x1b { // ESC: skip the whole ANSI escape sequence.
+			i = skipANSI(s, i)
+			continue
+		}
+		if c < 0x20 || c == 0x7f {
+			switch c {
+			case '\n', '\t', '\r':
+				b.WriteByte(c)
+			default:
+				// Drop other C0 control characters.
+			}
+			continue
+		}
+		b.WriteByte(c)
+	}
+	return b.String()
+}
+
+// skipANSI returns the index of the last byte of the ANSI escape sequence that
+// starts at i (where s[i] == ESC). It handles CSI sequences (ESC [ ... final
+// byte in 0x40..0x7E) and simple two-byte sequences (ESC <letter>).
+func skipANSI(s string, i int) int {
+	if i+1 >= len(s) {
+		return i
+	}
+	if s[i+1] == '[' {
+		// CSI: consume parameter/intermediate bytes then a final byte 0x40..0x7E.
+		for j := i + 2; j < len(s); j++ {
+			if s[j] >= 0x40 && s[j] <= 0x7e {
+				return j
+			}
+		}
+		return len(s) - 1
+	}
+	// Simple ESC + single character sequence (e.g. ESC c).
+	return i + 1
 }
 
 // setPagination adds page and limit query params when they are non-zero.
