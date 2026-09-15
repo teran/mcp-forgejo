@@ -11,7 +11,7 @@ import (
 // Config holds all runtime configuration for mcp-forgejo.
 type Config struct {
 	ForgejoURL   string `envconfig:"FORGEJO_URL"`
-	ForgejoToken string `envconfig:"FORGEJO_TOKEN"`
+	ForgejoToken string `envconfig:"FORGEJO_TOKEN" secret:"true"`
 	Host         string `envconfig:"HOST" default:"0.0.0.0"`
 	Port         string `envconfig:"PORT" default:"8080"`
 	LogLevel     string `envconfig:"LOG_LEVEL"`

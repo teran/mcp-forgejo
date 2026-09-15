@@ -37,13 +37,13 @@ const requestTimeout = 30 * time.Second
 // not depend on internal/config.
 type Config struct {
 	BaseURL string
-	Token   string
+	Token   string `secret:"true"`
 }
 
 // Client is a minimal Forgejo REST client implementing the domain services.
 type Client struct {
 	resty *resty.Client
-	token string
+	token string `secret:"true"`
 	log   *logrus.Logger
 }
 
