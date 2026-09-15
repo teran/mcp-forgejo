@@ -41,4 +41,5 @@ go.work.sum
 
 # Coverage artifacts (also matched by *.out / coverage.* above; explicit here)
 cover.out
+cover2.out
 coverage.html

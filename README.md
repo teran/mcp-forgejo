@@ -250,7 +250,7 @@ gosec ./...                    # findings must be FIXED
 govulncheck ./...              # findings must be FIXED
 go test -coverprofile=cover.out ./...
 go tool cover -func=cover.out | awk '/^total:/ {print $3}'  # must be >= 95%
-gremlins unleash . --threshold-efficacy=90 --threshold-mcover=0  # HARD GATE
+gremlins unleash . --threshold-efficacy=90 --threshold-mcover=30  # HARD GATE
 ```
 
 CI enforces a **95% coverage gate** (build fails below it), the race detector,
