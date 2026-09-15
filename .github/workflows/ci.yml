@@ -142,7 +142,11 @@ jobs:
       # a leaked secret breaks the build, fix-don't-suppress per S5/N8).
       - name: Run gitleaks over git history
         run: |
-          go install github.com/gitleaks/gitleaks/v8/cmd/gitleaks@latest
+          # The gitleaks v8 module declares its path as
+          # github.com/zricethezav/gitleaks/v8 (the /v8 main package is the
+          # module root, not /cmd/gitleaks), so install via that declared path
+          # to produce the `gitleaks` binary.
+          go install github.com/zricethezav/gitleaks/v8@latest
           gitleaks detect --source . --redact --verbose
 
   # ---- Vulnerability check (findings MUST be fixed) ----
