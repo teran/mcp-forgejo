@@ -1,3 +1,5 @@
+//go:build e2e
+
 package e2e
 
 // TestErrorNotFoundRepo drives forgejo_repo_get against a nonexistent repo

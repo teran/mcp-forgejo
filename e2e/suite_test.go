@@ -1,3 +1,5 @@
+//go:build e2e
+
 // Package e2e hosts the comprehensive testify/suite end-to-end suite. It boots
 // one REAL Forgejo container + in-process MCP server over the HTTP/SSE
 // transport (via the Stand) and drives every registered tool through the MCP

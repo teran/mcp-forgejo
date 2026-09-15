@@ -82,6 +82,28 @@ jobs:
           fi
           echo "::notice::Coverage ${total}% meets the >= 95% threshold."
 
+  # ---- End-to-end tests (build-tagged `e2e`; C04/C09GO) ----
+  # Runs `make test-e2e`, i.e. `go test -tags e2e ./...`, through the
+  # go-docker-testsuite harness which spins up a real Forgejo container.
+  # Requires the GitHub-hosted Docker daemon (ubuntu-latest provides one).
+  # This is a hard gate: NO continue-on-error — a failing e2e test breaks CI.
+  # e2e files carry `//go:build e2e` so they are excluded from `make test`.
+  e2e:
+    name: E2E (go-docker-testsuite, build-tag e2e)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: ${{ env.GO_VERSION }}
+          cache: true
+
+      - name: Run e2e tests (go-docker-testsuite)
+        # `make test-e2e` => `go test -tags e2e ./...`; the go-docker-testsuite
+        # harness brings up the Forgejo container used by the e2e suite.
+        run: make test-e2e
+
   # ---- Static security scan (findings MUST be fixed) ----
   gosec:
     name: gosec (security scan)

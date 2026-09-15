@@ -1,3 +1,5 @@
+//go:build e2e
+
 // Package e2e runs an end-to-end test that boots a REAL Forgejo instance (via
 // the go-docker-testsuite Forgejo wrapper), builds the mcp-forgejo MCP server
 // in-process pointing at it, and drives several MCP tool calls against the live

@@ -1,3 +1,5 @@
+//go:build e2e
+
 package e2e
 
 // TestIdempotencyFileWriteNonIdempotent proves file_write records a NEW commit

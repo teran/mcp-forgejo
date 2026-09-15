@@ -1,3 +1,5 @@
+//go:build e2e
+
 package e2e
 
 // TestReadRepositoryGet exercises forgejo_repo_get happy path against the

@@ -1,3 +1,5 @@
+//go:build e2e
+
 package e2e
 
 // TestDeleteFile deletes a throwaway file and confirms it is gone.
