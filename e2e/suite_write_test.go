@@ -89,26 +89,84 @@ func (s *FullSuite) TestWriteFileWriteMany() {
 	})
 }
 
-// TestWriteIssueUpdate edits the fixture issue (title/body) and leaves it open.
-// Idempotent.
+// TestWriteFileWriteManyUpdate covers the `update` operation of
+// forgejo_file_write_many, carrying the target file's blob SHA.
+//
+// CONTRACT FOR @developer (see report): the server's file_write_many input
+// schema (fileEntryIn) currently has NO `sha` field, and the wire request
+// (changeFilesRequest/changeFileEntryRequest) does not propagate one, so Forgejo
+// rejects an `update` with 422 (Forgejo requires the current file SHA to update
+// a blob). This test encodes the DESIRED behavior:
+//   - create a file (no sha needed),
+//   - read its blob SHA via forgejo_file_get,
+//   - file_write_many with operation=update + that sha -> a NEW commit that
+//     updates the file's content.
+//
+// Until @developer adds sha support (fileEntryIn.sha -> domain.ChangeFileEntry.SHA
+// -> changeFileEntryRequest.SHA), this test is EXPECTED to fail.
+func (s *FullSuite) TestWriteFileWriteManyUpdate() {
+	t := s.T()
+	path := s.ns + "-upd.txt"
+
+	create := callSuiteJSON[changeFilesResult](s, t, "forgejo_file_write_many", map[string]any{
+		"owner": s.stand.Admin(), "repo": s.repoName, "branch": "main",
+		"message": "e2e: many-update create",
+		"files": []map[string]any{
+			{"path": path, "content": "v1", "operation": "create"},
+		},
+	})
+	s.Assert().NotEmpty(create.CommitSHA)
+
+	f := callSuiteJSON[fileContentResult](s, t, "forgejo_file_get", map[string]any{
+		"owner": s.stand.Admin(), "repo": s.repoName, "path": path,
+	})
+	s.Assert().NotEmpty(f.SHA)
+
+	upd := callSuiteJSON[changeFilesResult](s, t, "forgejo_file_write_many", map[string]any{
+		"owner": s.stand.Admin(), "repo": s.repoName, "branch": "main",
+		"message": "e2e: many-update",
+		"files": []map[string]any{
+			{"path": path, "content": "v2", "operation": "update", "sha": f.SHA},
+		},
+	})
+	s.Assert().NotEmpty(upd.CommitSHA)
+	s.Assert().NotEqual(create.CommitSHA, upd.CommitSHA, "update must produce a new commit")
+
+	got := callSuiteJSON[fileContentResult](s, t, "forgejo_file_get", map[string]any{
+		"owner": s.stand.Admin(), "repo": s.repoName, "path": path,
+	})
+	s.Assert().Equal("v2", got.Content)
+	s.stand.Defer(t, func() {
+		CallJSON[any](s.stand, t, "forgejo_file_delete", map[string]any{
+			"owner": s.stand.Admin(), "repo": s.repoName, "path": path,
+			"branch": "main", "message": "e2e: cleanup many-update",
+		})
+	})
+}
+
+// TestWriteIssueUpdate edits an ISOLATED issue (title/body) and leaves it open.
+// Operates on a throwaway issue so the shared fixture's title stays stable
+// across the read tests (fragility reduction). Idempotent.
 func (s *FullSuite) TestWriteIssueUpdate() {
 	t := s.T()
+	index := s.newIsolatedIssue(t)
 	iss := callSuiteJSON[issueResult](s, t, "forgejo_issue_update", map[string]any{
-		"owner": s.stand.Admin(), "repo": s.repoName, "index": s.issueIndex,
-		"title": "Fixture issue (updated)", "body": "updated body", "state": "open",
+		"owner": s.stand.Admin(), "repo": s.repoName, "index": index,
+		"title": "Isolated issue (updated)", "body": "updated body", "state": "open",
 	})
-	s.Assert().Equal("Fixture issue (updated)", iss.Title)
+	s.Assert().Equal("Isolated issue (updated)", iss.Title)
 	s.Assert().Equal("open", iss.State)
 }
 
-// TestWritePullUpdate edits the fixture PR title (leaves it open). Idempotent.
+// TestWritePullUpdate edits an ISOLATED PR title (leaves it open). Idempotent.
 func (s *FullSuite) TestWritePullUpdate() {
 	t := s.T()
+	number := s.newIsolatedPR(t)
 	pr := callSuiteJSON[pullResult](s, t, "forgejo_pull_update", map[string]any{
-		"owner": s.stand.Admin(), "repo": s.repoName, "index": s.prNumber,
-		"title": "Fixture PR (updated)", "body": "updated", "state": "open",
+		"owner": s.stand.Admin(), "repo": s.repoName, "index": number,
+		"title": "Isolated PR (updated)", "body": "updated", "state": "open",
 	})
-	s.Assert().Equal("Fixture PR (updated)", pr.Title)
+	s.Assert().Equal("Isolated PR (updated)", pr.Title)
 	s.Assert().Equal("open", pr.State)
 }
 
@@ -147,68 +205,72 @@ func (s *FullSuite) TestWritePullMerge() {
 	})
 }
 
-// TestWritePullReview reviews the fixture PR. We use the "comment" event
-// (which carries a body): Forgejo requires a body for an "approve" review, and
-// the tool does not propagate the body to the submit step, so "approve" is
-// blocked against real Forgejo (documented in the deliverable).
+// TestWritePullReview reviews an ISOLATED PR using the "comment" event (which
+// carries a body), keeping the shared fixture PR free of review mutations.
 func (s *FullSuite) TestWritePullReview() {
 	t := s.T()
+	number := s.newIsolatedPR(t)
 	rev := callSuiteJSON[reviewResult](s, t, "forgejo_pull_review", map[string]any{
-		"owner": s.stand.Admin(), "repo": s.repoName, "index": s.prNumber,
+		"owner": s.stand.Admin(), "repo": s.repoName, "index": number,
 		"body": "looks good", "event": "comment",
 	})
 	s.Assert().NotZero(rev.ID)
 	s.Assert().NotEmpty(rev.Body)
 }
 
-// TestWriteRepoUpdate edits the fixture repo description. Idempotent.
+// TestWriteRepoUpdate edits an ISOLATED repo description. Idempotent.
 func (s *FullSuite) TestWriteRepoUpdate() {
 	t := s.T()
-	desc := "updated by e2e " + s.ns
-	repo := callSuiteJSON[repoDetailResult](s, t, "forgejo_repo_update", map[string]any{
-		"owner": s.stand.Admin(), "repo": s.repoName, "description": desc,
+	repo := s.newIsolatedRepo(t)
+	desc := "isolated repo desc " + s.ns
+	r := callSuiteJSON[repoDetailResult](s, t, "forgejo_repo_update", map[string]any{
+		"owner": s.stand.Admin(), "repo": repo, "description": desc,
 	})
-	s.Assert().Equal(desc, repo.Description)
+	s.Assert().Equal(desc, r.Description)
 }
 
-// TestWriteMilestoneUpdate edits the fixture milestone. Idempotent.
+// TestWriteMilestoneUpdate edits an ISOLATED milestone. Idempotent.
 func (s *FullSuite) TestWriteMilestoneUpdate() {
 	t := s.T()
+	id := s.newIsolatedMilestone(t)
 	ms := callSuiteJSON[milestoneResult](s, t, "forgejo_milestone_update", map[string]any{
-		"owner": s.stand.Admin(), "repo": s.repoName, "id": s.milestoneID,
-		"title": "Milestone One (updated)",
+		"owner": s.stand.Admin(), "repo": s.repoName, "id": id,
+		"title": "Isolated milestone (updated)",
 	})
-	s.Assert().Equal("Milestone One (updated)", ms.Title)
+	s.Assert().Equal("Isolated milestone (updated)", ms.Title)
 }
 
-// TestWriteLabelUpdate edits the fixture label. Idempotent.
+// TestWriteLabelUpdate edits an ISOLATED label. Idempotent.
 func (s *FullSuite) TestWriteLabelUpdate() {
 	t := s.T()
+	id := s.newIsolatedLabel(t)
 	l := callSuiteJSON[labelResult](s, t, "forgejo_label_update", map[string]any{
-		"owner": s.stand.Admin(), "repo": s.repoName, "id": s.labelID,
+		"owner": s.stand.Admin(), "repo": s.repoName, "id": id,
 		"color": "0e8a16",
 	})
 	s.Assert().Equal("0e8a16", l.Color)
 }
 
-// TestWriteIssueSetLabels replaces the fixture issue's labels with the fixture
+// TestWriteIssueSetLabels replaces an ISOLATED issue's labels with an ISOLATED
 // label (idempotent) and asserts it is applied.
 func (s *FullSuite) TestWriteIssueSetLabels() {
 	t := s.T()
+	index := s.newIsolatedIssue(t)
+	labelID := s.newIsolatedLabel(t)
 	s.callOK(t, "forgejo_issue_set_labels", map[string]any{
-		"owner": s.stand.Admin(), "repo": s.repoName, "index": s.issueIndex,
-		"labels": []int64{s.labelID},
+		"owner": s.stand.Admin(), "repo": s.repoName, "index": index,
+		"labels": []int64{labelID},
 	})
 	got := callSuiteJSON[issueWithCommentsResult](s, t, "forgejo_issue_get", map[string]any{
-		"owner": s.stand.Admin(), "repo": s.repoName, "index": s.issueIndex,
+		"owner": s.stand.Admin(), "repo": s.repoName, "index": index,
 	})
 	found := false
 	for _, l := range got.Issue.Labels {
-		if l.ID == s.labelID {
+		if l.ID == labelID {
 			found = true
 		}
 	}
-	s.Assert().True(found, "fixture label not applied: %+v", got.Issue.Labels)
+	s.Assert().True(found, "isolated label not applied: %+v", got.Issue.Labels)
 }
 
 // TestWriteReleaseAssetUpload uploads an asset to the fixture release.

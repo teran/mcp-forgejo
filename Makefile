@@ -9,7 +9,7 @@
 
 SERVER ?= mcp-forgejo           # binary name (see cmd/mcp-forgejo)
 
-.PHONY: test test-race test-e2e build lint arch vet fmt clean
+.PHONY: test test-race test-e2e test-e2e-cover build lint arch vet fmt clean
 
 ## Unit tests (default run) — excludes e2e (build tag `e2e`).
 test:
@@ -24,6 +24,12 @@ test-race:
 ## part of the default `go test ./...`. The CI `e2e` job invokes this target.
 test-e2e:
 	go test -tags e2e ./...
+
+## e2e tests with a separate coverage profile, so the e2e layer's coverage of the
+## stack can be measured independently of the unit run (C01GO unit profile is
+## cover.out). Inspect with: go tool cover -func=e2e-cover.out | awk '/^total:/ {print $3}'
+test-e2e-cover:
+	go test -tags e2e -coverprofile=e2e-cover.out -covermode=atomic ./...
 
 ## Build the server binary into dist/.
 build:

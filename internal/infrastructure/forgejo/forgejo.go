@@ -469,6 +469,7 @@ func (c *Client) ChangeFiles(ctx context.Context, in domain.ChangeFilesInput) (d
 			Path:      f.Path,
 			Operation: f.Operation,
 			Content:   base64.StdEncoding.EncodeToString([]byte(f.Content)),
+			SHA:       f.SHA,
 		})
 	}
 	var wire changeFilesResponse
@@ -919,13 +920,15 @@ type contentResponse struct {
 
 // createRepositoryRequest is the body of repoCreateFile / orgCreateRepo. The
 // owner goes in the URL path, never the body. Template fields (license,
-// gitignore, default_branch, readme) are omitted when empty.
+// gitignores, default_branch, readme) are omitted when empty. Gitignore maps
+// to the plural wire field "gitignores" as expected by Forgejo's
+// CreateRepoOption.
 type createRepositoryRequest struct {
 	Name          string `json:"name"`
 	Private       bool   `json:"private"`
 	AutoInit      bool   `json:"auto_init"`
 	License       string `json:"license,omitempty"`
-	Gitignore     string `json:"gitignore,omitempty"`
+	Gitignore     string `json:"gitignores,omitempty"`
 	DefaultBranch string `json:"default_branch,omitempty"`
 	Readme        string `json:"readme,omitempty"`
 }
@@ -999,10 +1002,13 @@ type changeFilesRequest struct {
 }
 
 // changeFileEntryRequest is a single file operation within repoChangeFiles.
+// SHA carries the blob SHA of the current file version, which Forgejo requires
+// for the update and delete operations (ContentsChangeOption.SHA).
 type changeFileEntryRequest struct {
 	Path      string `json:"path"`
 	Operation string `json:"operation"`
 	Content   string `json:"content"`
+	SHA       string `json:"sha,omitempty"`
 }
 
 // changeFilesResponse is the wire shape of a repoChangeFiles response.

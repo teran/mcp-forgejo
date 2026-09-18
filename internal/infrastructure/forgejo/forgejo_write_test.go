@@ -135,9 +135,9 @@ func TestCreateRepositorySendsTemplateFields(t *testing.T) {
 	if err != nil {
 		t.Fatalf("CreateRepository() error = %v", err)
 	}
-	if gotBody["license"] != "MIT" || gotBody["gitignore"] != "Go" ||
+	if gotBody["license"] != "MIT" || gotBody["gitignores"] != "Go" ||
 		gotBody["default_branch"] != "main" || gotBody["readme"] != "Default" {
-		t.Errorf("body = %+v, want license/gitignore/default_branch/readme set", gotBody)
+		t.Errorf("body = %+v, want license/gitignores/default_branch/readme set", gotBody)
 	}
 }
 
@@ -153,7 +153,7 @@ func TestCreateRepositoryOmitsEmptyTemplateFields(t *testing.T) {
 	if err != nil {
 		t.Fatalf("CreateRepository() error = %v", err)
 	}
-	for _, f := range []string{"license", "gitignore", "default_branch", "readme"} {
+	for _, f := range []string{"license", "gitignores", "default_branch", "readme"} {
 		if _, ok := gotBody[f]; ok {
 			t.Errorf("body contains %q but it should be omitted when empty: %+v", f, gotBody)
 		}
@@ -300,7 +300,7 @@ func TestChangeFiles(t *testing.T) {
 		Owner: "acme", Repo: "demo", Branch: "main", Message: "add many",
 		Files: []domain.ChangeFileEntry{
 			{Path: "a.txt", Content: "aaa", Operation: "create"},
-			{Path: "b.txt", Content: "bbb", Operation: "create"},
+			{Path: "b.txt", Content: "bbb", Operation: "update", SHA: "blob-sha-b"},
 		},
 	})
 	if err != nil {
@@ -325,6 +325,13 @@ func TestChangeFiles(t *testing.T) {
 	}
 	if first["content"] != base64.StdEncoding.EncodeToString([]byte("aaa")) {
 		t.Errorf("file[0] content not base64: %+v", first["content"])
+	}
+	if _, has := first["sha"]; has {
+		t.Errorf("file[0] must not carry sha for create: %+v", first)
+	}
+	second, _ := files[1].(map[string]any)
+	if second["path"] != "b.txt" || second["operation"] != "update" || second["sha"] != "blob-sha-b" {
+		t.Errorf("file[1] = %+v, want path/operation=update/sha=blob-sha-b", second)
 	}
 	if res.CommitSHA != "c9" || len(res.Files) != 2 || res.Files[0].Path != "a.txt" {
 		t.Errorf("res = %+v", res)
