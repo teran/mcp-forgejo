@@ -2,54 +2,62 @@
 
 package e2e
 
+// notFoundTokens are the SPEC §4.4 `notFound` (404) category markers observed in
+// the MCP error text. Forgejo's 404 bodies vary ("couldn't be found", "object
+// does not exist", "not found", "404"), so we accept any of them.
+var notFoundTokens = []string{"not found", "not_found", "couldn't be found", "couldn't", "does not exist", "404"}
+
+// conflictTokens are the SPEC §4.4 conflict markers for a 409.
+var conflictTokens = []string{"conflict", "already exists", "already_exist", "409"}
+
 // TestErrorNotFoundRepo drives forgejo_repo_get against a nonexistent repo
 // (SPEC §4.4: 404 -> tool returns a clear not-found result).
 func (s *FullSuite) TestErrorNotFoundRepo() {
 	t := s.T()
-	s.callErr(t, "forgejo_repo_get", map[string]any{
+	s.callErrCategory(t, "forgejo_repo_get", map[string]any{
 		"owner": s.stand.Admin(), "repo": s.ns + "-missing",
-	})
+	}, notFoundTokens...)
 }
 
 // TestErrorNotFoundFile drives forgejo_file_get against a missing file.
 func (s *FullSuite) TestErrorNotFoundFile() {
 	t := s.T()
-	s.callErr(t, "forgejo_file_get", map[string]any{
+	s.callErrCategory(t, "forgejo_file_get", map[string]any{
 		"owner": s.stand.Admin(), "repo": s.repoName, "path": "does-not-exist.md",
-	})
+	}, notFoundTokens...)
 }
 
 // TestErrorNotFoundIssue drives forgejo_issue_get with a nonexistent index.
 func (s *FullSuite) TestErrorNotFoundIssue() {
 	t := s.T()
-	s.callErr(t, "forgejo_issue_get", map[string]any{
+	s.callErrCategory(t, "forgejo_issue_get", map[string]any{
 		"owner": s.stand.Admin(), "repo": s.repoName, "index": int64(999999),
-	})
+	}, notFoundTokens...)
 }
 
 // TestErrorNotFoundBranch drives forgejo_branch_get with a nonexistent branch.
 func (s *FullSuite) TestErrorNotFoundBranch() {
 	t := s.T()
-	s.callErr(t, "forgejo_branch_get", map[string]any{
+	s.callErrCategory(t, "forgejo_branch_get", map[string]any{
 		"owner": s.stand.Admin(), "repo": s.repoName, "branch": "nope",
-	})
+	}, notFoundTokens...)
 }
 
 // TestErrorNotFoundContents drives forgejo_repo_list_contents on a missing dir.
 func (s *FullSuite) TestErrorNotFoundContents() {
 	t := s.T()
-	s.callErr(t, "forgejo_repo_list_contents", map[string]any{
+	s.callErrCategory(t, "forgejo_repo_list_contents", map[string]any{
 		"owner": s.stand.Admin(), "repo": s.repoName, "path": "no-such-dir",
-	})
+	}, notFoundTokens...)
 }
 
 // TestErrorConflictDuplicateRepo proves repo_create with an existing name is
-// rejected (409 conflict).
+// rejected and the error maps onto the conflict (409) category.
 func (s *FullSuite) TestErrorConflictDuplicateRepo() {
 	t := s.T()
-	s.callErr(t, "forgejo_repo_create", map[string]any{
+	s.callErrCategory(t, "forgejo_repo_create", map[string]any{
 		"name": s.repoName, "auto_init": true,
-	})
+	}, conflictTokens...)
 }
 
 // TestErrorConflictDuplicateLabel documents that Forgejo does NOT 409 on a

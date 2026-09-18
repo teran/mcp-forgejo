@@ -73,13 +73,14 @@ func (s *FullSuite) TestIdempotencyCommentAddNonIdempotent() {
 	s.Assert().NotEqual(c1.ID, c2.ID, "repeated comment_add must create distinct comments")
 }
 
-// TestIdempotencyIssueUpdate proves repeating the same issue edit is a no-op
-// with no error.
+// TestIdempotencyIssueUpdate proves repeating the same ISOLATED issue edit is a
+// no-op with no error.
 func (s *FullSuite) TestIdempotencyIssueUpdate() {
 	t := s.T()
+	index := s.newIsolatedIssue(t)
 	args := map[string]any{
-		"owner": s.stand.Admin(), "repo": s.repoName, "index": s.issueIndex,
-		"title": "Idempotent issue title", "body": "idem", "state": "open",
+		"owner": s.stand.Admin(), "repo": s.repoName, "index": index,
+		"title": "Idempotent isolated issue", "body": "idem", "state": "open",
 	}
 	first := callSuiteJSON[issueResult](s, t, "forgejo_issue_update", args)
 	second := callSuiteJSON[issueResult](s, t, "forgejo_issue_update", args)
@@ -87,12 +88,14 @@ func (s *FullSuite) TestIdempotencyIssueUpdate() {
 	s.Assert().Equal("open", second.State)
 }
 
-// TestIdempotencyPullUpdate proves repeating the same PR edit is a no-op.
+// TestIdempotencyPullUpdate proves repeating the same ISOLATED PR edit is a
+// no-op.
 func (s *FullSuite) TestIdempotencyPullUpdate() {
 	t := s.T()
+	number := s.newIsolatedPR(t)
 	args := map[string]any{
-		"owner": s.stand.Admin(), "repo": s.repoName, "index": s.prNumber,
-		"title": "Idempotent PR title", "state": "open",
+		"owner": s.stand.Admin(), "repo": s.repoName, "index": number,
+		"title": "Idempotent isolated PR title", "state": "open",
 	}
 	first := callSuiteJSON[pullResult](s, t, "forgejo_pull_update", args)
 	second := callSuiteJSON[pullResult](s, t, "forgejo_pull_update", args)
@@ -103,43 +106,50 @@ func (s *FullSuite) TestIdempotencyPullUpdate() {
 // TestIdempotencySetLabels proves repeating the same label set is a no-op.
 func (s *FullSuite) TestIdempotencySetLabels() {
 	t := s.T()
+	index := s.newIsolatedIssue(t)
+	labelID := s.newIsolatedLabel(t)
 	args := map[string]any{
-		"owner": s.stand.Admin(), "repo": s.repoName, "index": s.issueIndex,
-		"labels": []int64{s.labelID},
+		"owner": s.stand.Admin(), "repo": s.repoName, "index": index,
+		"labels": []int64{labelID},
 	}
 	s.callOK(t, "forgejo_issue_set_labels", args)
 	s.callOK(t, "forgejo_issue_set_labels", args) // second identical call: no error, no change
 }
 
-// TestIdempotencyRepoUpdate proves repeating the same repo edit is a no-op.
+// TestIdempotencyRepoUpdate proves repeating the same ISOLATED repo edit is a
+// no-op.
 func (s *FullSuite) TestIdempotencyRepoUpdate() {
 	t := s.T()
+	repo := s.newIsolatedRepo(t)
 	args := map[string]any{
-		"owner": s.stand.Admin(), "repo": s.repoName, "description": "idempotent desc",
+		"owner": s.stand.Admin(), "repo": repo, "description": "idempotent isolated desc",
 	}
 	first := callSuiteJSON[repoDetailResult](s, t, "forgejo_repo_update", args)
 	second := callSuiteJSON[repoDetailResult](s, t, "forgejo_repo_update", args)
 	s.Assert().Equal(first.Description, second.Description)
 }
 
-// TestIdempotencyLabelUpdate proves repeating the same label edit is a no-op.
+// TestIdempotencyLabelUpdate proves repeating the same ISOLATED label edit is a
+// no-op.
 func (s *FullSuite) TestIdempotencyLabelUpdate() {
 	t := s.T()
+	id := s.newIsolatedLabel(t)
 	args := map[string]any{
-		"owner": s.stand.Admin(), "repo": s.repoName, "id": s.labelID, "color": "5319e7",
+		"owner": s.stand.Admin(), "repo": s.repoName, "id": id, "color": "5319e7",
 	}
 	first := callSuiteJSON[labelResult](s, t, "forgejo_label_update", args)
 	second := callSuiteJSON[labelResult](s, t, "forgejo_label_update", args)
 	s.Assert().Equal(first.Color, second.Color)
 }
 
-// TestIdempotencyMilestoneUpdate proves repeating the same milestone edit is a
-// no-op.
+// TestIdempotencyMilestoneUpdate proves repeating the same ISOLATED milestone
+// edit is a no-op.
 func (s *FullSuite) TestIdempotencyMilestoneUpdate() {
 	t := s.T()
+	id := s.newIsolatedMilestone(t)
 	args := map[string]any{
-		"owner": s.stand.Admin(), "repo": s.repoName, "id": s.milestoneID,
-		"title": "Idempotent milestone",
+		"owner": s.stand.Admin(), "repo": s.repoName, "id": id,
+		"title": "Idempotent isolated milestone",
 	}
 	first := callSuiteJSON[milestoneResult](s, t, "forgejo_milestone_update", args)
 	second := callSuiteJSON[milestoneResult](s, t, "forgejo_milestone_update", args)

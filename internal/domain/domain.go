@@ -488,10 +488,12 @@ type FileResult struct {
 }
 
 // ChangeFileEntry describes a single file operation within a multi-file commit.
+// SHA is the blob SHA of the current file version, required for update/delete.
 type ChangeFileEntry struct {
 	Path      string `json:"path"`
 	Content   string `json:"content"`
 	Operation string `json:"operation"`
+	SHA       string `json:"sha,omitempty"`
 }
 
 // ChangeFilesInput carries the fields of a multi-file (single-commit) write.

@@ -393,7 +393,7 @@ func registerWriteTools(s *mcp.Server, client *forgejo.Client) {
 	}, func(ctx context.Context, _ *mcp.CallToolRequest, in fileWriteManyIn) (*mcp.CallToolResult, domain.ChangeFilesResult, error) {
 		files := make([]domain.ChangeFileEntry, 0, len(in.Files))
 		for _, f := range in.Files {
-			files = append(files, domain.ChangeFileEntry{Path: f.Path, Content: f.Content, Operation: f.Operation})
+			files = append(files, domain.ChangeFileEntry{Path: f.Path, Content: f.Content, Operation: f.Operation, SHA: f.SHA})
 		}
 		res, err := application.WriteManyFiles(ctx, client, domain.ChangeFilesInput{
 			Owner: in.Owner, Repo: in.Repo, Branch: in.Branch, Message: in.Message, Files: files,
@@ -540,6 +540,7 @@ type fileEntryIn struct {
 	Path      string `json:"path" jsonschema:"File path"`
 	Content   string `json:"content,omitempty" jsonschema:"File content (text)"`
 	Operation string `json:"operation" jsonschema:"Operation: create/update/delete"`
+	SHA       string `json:"sha,omitempty" jsonschema:"Blob SHA of the current file version; required for update/delete"`
 }
 
 type branchCreateIn struct {

@@ -412,6 +412,29 @@ func (s *FullSuite) callErr(t *testing.T, tool string, args map[string]any) *mcp
 	return res
 }
 
+// containsAny reports whether s contains at least one of subs (case-insensitive).
+func containsAny(s string, subs ...string) bool {
+	ls := strings.ToLower(s)
+	for _, sub := range subs {
+		if strings.Contains(ls, strings.ToLower(sub)) {
+			return true
+		}
+	}
+	return false
+}
+
+// callErrCategory is callErr tightened to also assert the error text maps onto a
+// SPEC §4.4 taxonomy category, signalled by at least one of the given tokens.
+// Use it for deterministic categories (notFound 404, conflict 409, validation);
+// the free-text Forgejo 401/403/423 paths keep callErr + hygiene assertions.
+func (s *FullSuite) callErrCategory(t *testing.T, tool string, args map[string]any, tokens ...string) *mcp.CallToolResult {
+	t.Helper()
+	res := s.callErr(t, tool, args)
+	s.Assert().Truef(containsAny(textOf(res), tokens...),
+		"%s: error text %q did not match any category token %v", tool, truncate(textOf(res)), tokens)
+	return res
+}
+
 // callJSON invokes a tool, fails on error, records coverage, checks hygiene and
 // decodes the JSON text content into T. It is a package-level generic function
 // (methods cannot declare type parameters).
@@ -521,6 +544,55 @@ func (c *secondConn) close() {
 	if c.ts != nil {
 		c.ts.Close()
 	}
+}
+
+// newSecondUser creates a second Forgejo user (via the admin API), grants it
+// write collaborator access to the shared fixture repo, mints a PAT for it, and
+// returns a connected second MCP client bound to that PAT. It is used to cover
+// pull_review approve/request_changes, which Forgejo forbids the PR author from
+// performing on their own pull request ("reject your own pull is not allowed").
+func (s *FullSuite) newSecondUser(t *testing.T) *secondConn {
+	t.Helper()
+	username := fmt.Sprintf("e2euser-%d", time.Now().UnixNano())
+	password := "TestPass123!"
+
+	code, raw := s.rawRequest(t, http.MethodPost, "/api/v1/admin/users",
+		map[string]any{"username": username, "email": username + "@example.com",
+			"password": password, "must_change_password": false}, "basic")
+	require.Equalf(t, http.StatusCreated, code, "create second user: %d %s", code, truncate(string(raw)))
+
+	// Grant write collaborator access so the second user can view + review the PR.
+	code2, raw2 := s.rawRequest(t, http.MethodPut,
+		"/api/v1/repos/"+s.stand.Admin()+"/"+s.repoName+"/collaborators/"+username,
+		map[string]any{"permission": "write"}, "basic")
+	require.Containsf(t, []int{http.StatusNoContent, http.StatusOK, http.StatusCreated}, code2,
+		"add collaborator: %d %s", code2, truncate(string(raw2)))
+
+	// The second user mints its own token via basic auth.
+	body, err := json.Marshal(map[string]any{"name": "e2e", "scopes": []string{"all"}})
+	require.NoError(t, err)
+	req, err := http.NewRequestWithContext(s.ctx, http.MethodPost,
+		s.stand.BaseURL()+"/api/v1/users/"+username+"/tokens", bytes.NewReader(body))
+	require.NoError(t, err)
+	req.Header.Set("Content-Type", "application/json")
+	req.SetBasicAuth(username, password)
+	resp, err := http.DefaultClient.Do(req)
+	require.NoError(t, err)
+	defer func() { _ = resp.Body.Close() }()
+	raw3, _ := io.ReadAll(resp.Body)
+	require.Equalf(t, http.StatusCreated, resp.StatusCode, "mint second-user token: %d %s", resp.StatusCode, truncate(string(raw3)))
+	var tok struct {
+		SHA1  string `json:"sha1"`
+		Token string `json:"token"`
+	}
+	require.NoError(t, json.Unmarshal(raw3, &tok))
+	token := tok.SHA1
+	if token == "" {
+		token = tok.Token
+	}
+	require.NotEmpty(t, token)
+
+	return s.newSecondClient(t, token)
 }
 
 // The canonical inventory of the 51 registered tools (mirrors server.go).

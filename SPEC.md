@@ -226,7 +226,7 @@ Representative JSON-Schema-style metadata block (shown for one tool; all tools c
 
 | # | Tool | Title | Forgejo operationId(s) | Status | `idempotent` | Instructions (abridged) |
 |---|------|-------|------------------------|--------|--------------|--------------------------|
-| 14 | `forgejo_repo_create` | Create repository | `createCurrentUserRepo` | **implemented** | false | Create a repo (`name`, optional `owner`/org, `private`, `auto_init`, plus template fields `license`, `gitignore`, `default_branch`, `readme`). Creating a name that already exists **conflicts** — not idempotent. |
+| 14 | `forgejo_repo_create` | Create repository | `createCurrentUserRepo` | **implemented** | false | Create a repo (`name`, optional `owner`/org, `private`, `auto_init`, plus template fields `license`, `gitignores`, `default_branch`, `readme`). Creating a name that already exists **conflicts** — not idempotent. |
 | 15 | `forgejo_file_write` | Write/update file | `repoCreateFile`, `repoUpdateFile` | planned | false | **Single call covering create AND update**: write `content` (text, base64-encoded on the wire) at `path`+`branch` with a commit `message`. Creates if absent, updates if present. Not idempotent: every call records a new commit (the blob sha changes), even for identical content. |
 | 16 | `forgejo_file_write_many` | Write multiple files | `repoChangeFiles` | planned | false | Modify several files in **one commit** (multi-file single commit) at a branch with a commit message. |
 | 17 | `forgejo_branch_create` | Create branch | `repoCreateBranch` | planned | false | Create a branch from an existing ref. Creating an existing branch **conflicts**. |
