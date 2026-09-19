@@ -18,6 +18,7 @@ type Config struct {
 	LogFilename  string `envconfig:"LOG_FILENAME" default:"/tmp/mcp-forgejo.log"`
 	LogFormat    string `envconfig:"LOG_FORMAT" default:"text"`
 	Transport    string `envconfig:"TRANSPORT" default:"stdio"`
+	InternalAddr string `envconfig:"INTERNAL_ADDR" default:":8081"`
 }
 
 // Load reads configuration from the environment and validates it. ForgejoURL

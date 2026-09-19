@@ -19,6 +19,7 @@ import (
 	"github.com/teran/mcp-forgejo/internal/config"
 	"github.com/teran/mcp-forgejo/internal/infrastructure/forgejo"
 	"github.com/teran/mcp-forgejo/internal/logging"
+	"github.com/teran/mcp-forgejo/internal/observability"
 	"github.com/teran/mcp-forgejo/internal/server"
 )
 
@@ -53,6 +54,9 @@ var (
 			return err
 		}
 		return nil
+	}
+	runObservability = func(ctx context.Context, cfg config.Config, log *logrus.Logger) error {
+		return observability.Run(ctx, cfg.InternalAddr, log)
 	}
 )
 
@@ -116,6 +120,14 @@ func run(args []string) int {
 	case "http-sse":
 		logger.WithFields(logrus.Fields{"host": cfg.Host, "port": cfg.Port}).
 			Info("starting mcp-forgejo in http-sse mode")
+		// The observability endpoint (metrics/pprof/healthz/readyz) runs on a
+		// separate internal listener and is only enabled in HTTP mode; stdio
+		// owns stdout and does not start it (O1/O2/O4, N32).
+		logger.WithField("addr", cfg.InternalAddr).Info("observability enabled")
+		if err := runObservability(ctx, cfg, logger); err != nil {
+			logger.WithError(err).Error("observability server failed")
+			return 1
+		}
 		if err := runHTTPServer(ctx, cfg, s); err != nil {
 			logger.WithError(err).Error("http server failed")
 			return 1

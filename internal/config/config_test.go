@@ -34,6 +34,9 @@ func TestLoadDefaults(t *testing.T) {
 	if cfg.Transport != "stdio" {
 		t.Errorf("Transport default = %q", cfg.Transport)
 	}
+	if cfg.InternalAddr != ":8081" {
+		t.Errorf("InternalAddr default = %q, want :8081", cfg.InternalAddr)
+	}
 	if cfg.LogLevel != "" {
 		t.Errorf("LogLevel default = %q, want empty", cfg.LogLevel)
 	}
@@ -48,6 +51,7 @@ func TestLoadOverrides(t *testing.T) {
 	t.Setenv("LOG_FILENAME", "/var/log/forgejo.log")
 	t.Setenv("LOG_FORMAT", "json")
 	t.Setenv("TRANSPORT", "http-sse")
+	t.Setenv("INTERNAL_ADDR", ":9091")
 
 	cfg, err := Load()
 	if err != nil {
@@ -61,6 +65,9 @@ func TestLoadOverrides(t *testing.T) {
 	}
 	if cfg.Transport != "http-sse" {
 		t.Errorf("Transport = %q, want http-sse", cfg.Transport)
+	}
+	if cfg.InternalAddr != ":9091" {
+		t.Errorf("InternalAddr = %q, want :9091", cfg.InternalAddr)
 	}
 }
 
