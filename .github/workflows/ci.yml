@@ -36,11 +36,13 @@ jobs:
         # Building from source guarantees a binary compiled with the CI Go 1.27
         # toolchain and drops the checksum dependency on a downloaded artifact.
         # The version is pinned (v2.13.2) so the binary supports go 1.27 modules
-        # and does not change spontaneously. actions/setup-go@v5 already puts
+        # and does not change spontaneously. Note the `/v2` in the module path:
+        # golangci-lint v2 uses a major-version module path, so without it
+        # `go install` cannot resolve the tag. actions/setup-go@v5 already puts
         # $(go env GOPATH)/bin on PATH, so the `golangci-lint` binary is
         # available to the subsequent `make lint` step.
         run: |
-          go install github.com/golangci/golangci-lint/cmd/golangci-lint@v2.13.2
+          go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@v2.13.2
 
       - name: Lint (make lint)
         # `make lint` => golangci-lint run ./... && go vet ./... (R07/N31: CI
