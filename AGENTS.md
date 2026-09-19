@@ -27,8 +27,11 @@ instance over HTTP; it **never touches the local filesystem** (so there is **no
 - **Logger:** `logrus` only. Channel per transport (L1): HTTP/SSE → stdout;
   stdio → file (`/tmp/mcp-forgejo.log`, chmod 600), **never** stdout.
 - **Default branch:** `master` (never `main`).
-- **Auth:** single Forgejo PAT via `Authorization: token <PAT>` from
-  `FORGEJO_TOKEN`. **No OAuth2.**
+- **Auth:** single Forgejo PAT. Per-transport: **HTTP/SSE** accepts the token
+  per-request from the `Authorization: Bearer <token>` header (remote auth via
+  headers, M6; requests without a valid Bearer token get `401`); **stdio**
+  requires `FORGEJO_TOKEN` env (local auth via env). The resolved token is sent
+  outbound as `Authorization: token <PAT>` on every Forgejo call. **No OAuth2.**
 
 ## TDD workflow (T1)
 
@@ -52,19 +55,22 @@ gosec ./...                             # static security; findings FIXED, not s
 govulncheck ./...                       # vuln audit; findings FIXED, not suppressed
 gitleaks detect --source . --redact --verbose   # secret scan over git history (full clone); findings FIXED
 go-arch-lint check                      # dependency rules (.go-arch-lint.yml)
-gremlins unleash . --threshold-efficacy=90 --threshold-mcover=30  # HARD GATE
+gremlins unleash . --threshold-efficacy=90 --threshold-mcover=80 --timeout-coefficient=60  # HARD GATE
 ```
 
-> **Gremlins `--threshold-mcover` = 30 (documented deviation from 80).** Mutant
-> coverage is capped near **30–35%** because gremlins 0.6.x derives its
-> per-mutant timeout from the baseline suite time, so on this slow suite most
-> mutants report "Timed out" and are excluded from the coverage/efficacy
-> accounting in the CI-equivalent (warm cache) run. With a cold cache gremlins
-> tests ~91% of mutants, but ~24 live request-core + e2e-helper mutants then
-> pin real efficacy at ~88.7% — below the 90 efficacy gate (which must stay
-> ≥ 90). **To reach 80:** kill those live mutants (restore efficacy ≥ 90) and
-> raise `--timeout-coefficient` so the timed-out mutants are actually
-> exercised. See SPEC.md §8.
+> **Gremlins `--threshold-mcover` = 80 (goal reached) with
+> `--timeout-coefficient=60`.** gremlins 0.6.x derives its per-mutant timeout
+> from the baseline suite time (default coefficient 3), so on a warm Go test
+> cache (the CI-equivalent run) the short timeout made most mutants report
+> "Timed out" and excluded them from the coverage/efficacy accounting — capping
+> reported mutant coverage near 21–35%. Raising the coefficient to 60 lets every
+> mutant actually run (0 timed out), giving **mcover ≈ 83%** with **efficacy
+> ≈ 97%** (≥ 90). The remaining ~6 live mutants are near-equivalent
+> (time-constant arithmetic and `len(query) > 0` / `err != nil` boundary cases)
+> needing production refactoring to kill. gremlins 0.6.x warm-cache coverage
+> accounting is fragile (it can report NOT COVERED for lines `go tool cover`
+> shows at 100%), so reported mcover varies run-to-run; 80 is set against the
+> ~83% warm-cache measurement. See SPEC.md §8.
 
 ## Rules
 
@@ -89,7 +95,9 @@ gremlins unleash . --threshold-efficacy=90 --threshold-mcover=30  # HARD GATE
   only fails when the threshold is positive), which would make the gate a paper
   gate. Run on the module root `.`, not `./...` (which finds no mutants in
   0.6.x). Keep the threshold above the real efficacy so a living survivor drops
-  the score below it and fails the build.
+  the score below it and fails the build. Always pass `--timeout-coefficient=60`
+  so every mutant is actually exercised on a warm cache (see the mcover note
+  above).
 
 ## Build / image workflow (Hybrid)
 

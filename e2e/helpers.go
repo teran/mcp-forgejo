@@ -64,6 +64,27 @@ func createPAT(t *testing.T, ctx context.Context, baseURL, username, password st
 	}
 }
 
+// authedClient returns an *http.Client whose RoundTripper injects the given PAT
+// as an `Authorization: Bearer <pat>` header on every request before forwarding
+// to the default transport. The MCP server's HTTP/SSE transport requires this
+// header (M6); a RoundTripper covers both POST and the standalone SSE GET. The
+// pat is never logged (S2).
+func authedClient(pat string) *http.Client {
+	rt := roundTripperFunc(func(req *http.Request) (*http.Response, error) {
+		req = req.Clone(req.Context())
+		req.Header.Set("Authorization", "Bearer "+pat)
+		return http.DefaultTransport.RoundTrip(req)
+	})
+	return &http.Client{Transport: rt}
+}
+
+// roundTripperFunc adapts a plain function to the http.RoundTripper interface.
+type roundTripperFunc func(*http.Request) (*http.Response, error)
+
+func (f roundTripperFunc) RoundTrip(req *http.Request) (*http.Response, error) {
+	return f(req)
+}
+
 // textOf returns the first text content of a tool result, or "" if none.
 func textOf(res *mcp.CallToolResult) string {
 	if len(res.Content) == 0 {

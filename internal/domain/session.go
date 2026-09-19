@@ -11,6 +11,7 @@ type sessionKey int
 const (
 	sessionKeyRequestID sessionKey = iota
 	sessionKeySource
+	sessionKeyToken
 )
 
 // WithRequestID returns a derived context carrying id. It never mutates its
@@ -38,4 +39,21 @@ func WithSource(ctx context.Context, source string) context.Context {
 func SourceFromContext(ctx context.Context) (string, bool) {
 	s, ok := ctx.Value(sessionKeySource).(string)
 	return s, ok
+}
+
+// WithToken returns a derived context carrying token. It never mutates its
+// input. The token is the Forgejo PAT supplied per-request over the HTTP
+// transport (Authorization: Bearer) and is consumed by the infrastructure layer
+// to authenticate the outbound Forgejo request.
+func WithToken(ctx context.Context, token string) context.Context {
+	return context.WithValue(ctx, sessionKeyToken, token)
+}
+
+// TokenFromContext returns the token stored on the context and whether one is
+// present. An empty-but-present token reports ok=true so callers can
+// distinguish "no token" from "empty token" (the HTTP transport never injects
+// an empty token, but the distinction mirrors the request-ID helpers).
+func TokenFromContext(ctx context.Context) (string, bool) {
+	tok, ok := ctx.Value(sessionKeyToken).(string)
+	return tok, ok
 }
