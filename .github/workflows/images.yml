@@ -37,9 +37,6 @@ jobs:
           go-version: "1.27"
           cache: true
 
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
-
       - name: Compute image tags
         id: meta
         shell: bash
@@ -61,15 +58,13 @@ jobs:
           # join with comma
           IFS=, ; echo "tags=${TAGS[*]}" >> "$GITHUB_OUTPUT"
 
-      - name: Build binary with GoReleaser
-        # The binary is built by GoReleaser (NOT in the Dockerfile); the
-        # Dockerfile only copies it in. --single-target builds for the runner
-        # (linux/amd64); --output writes dist/mcp-forgejo for a stable COPY.
-        uses: goreleaser/goreleaser-action@v6
-        with:
-          distribution: goreleaser
-          version: latest
-          args: build --snapshot --clean --single-target --output dist/mcp-forgejo
+      - name: Build binary + image (make container-image)
+        # Binds to the build-system interface (R07/N31). `make container-image`
+        # runs `goreleaser build --snapshot --clean --single-target --output
+        # dist/mcp-forgejo` (B4 — the Dockerfile only copies the GoReleaser
+        # binary into the image; no in-image compile) then
+        # `docker build -t mcp-forgejo .`.
+        run: make container-image
 
       - name: Log in to registry
         uses: docker/login-action@v3
@@ -78,12 +73,15 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Build and push
-        uses: docker/build-push-action@v6
-        with:
-          context: .
-          push: true
-          tags: ${{ steps.meta.outputs.tags }}
-          platforms: linux/amd64
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
+      - name: Tag and push image (R3/R4)
+        # `make container-image` tags the local image as mcp-forgejo:latest.
+        # Retag it into the computed ghcr.io tags (X / master-* per R3/R4) and
+        # push each. (For a single-image push, `make container-image push=true`
+        # pushes the mcp-forgejo image directly.)
+        run: |
+          IFS=, read -ra TAGS <<< "${{ steps.meta.outputs.tags }}"
+          for t in "${TAGS[@]}"; do
+            docker tag mcp-forgejo "$t"
+            docker push "$t"
+          done
+

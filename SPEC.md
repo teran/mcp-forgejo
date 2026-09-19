@@ -23,12 +23,12 @@ Both transports are driven by the **same tool registry and application layer**; 
 
 ## 2. Auth decision (M3 / N10) — OAuth2 is NOT used
 
-**OAuth2 is not used.** The server authenticates to Forgejo with a single **personal access token (PAT)** supplied via environment, sent as an `Authorization: token <PAT>` header on every Forgejo API call.
+**OAuth2 is not used.** The server authenticates to Forgejo with a **personal access token (PAT)**, sent as an `Authorization: token <PAT>` header on every Forgejo API call. The PAT is sourced per-transport (M6): over **HTTP** it is accepted per-request from the client's `Authorization: Bearer <token>` HTTP header (remote auth via headers); over **stdio** it is supplied via the `FORGEJO_TOKEN` environment variable (local auth via env).
 
 **Why no OAuth2:** the target is an **internal** Forgejo instance, and the Forgejo swagger exposes **no OAuth2 client flow** for the operations this server performs — there is no authorization-code or client-credentials endpoint usable here. A single PAT is the natural, minimal mechanism: it is scoped to the calling user, long-lived, trivially issued/revoked in the Forgejo UI, and sufficient for both launch modes:
 
-- **stdio (local):** the PAT is supplied to the server by the local operator via `FORGEJO_TOKEN` in the environment — the standard local-credential path.
-- **HTTP/SSE (remote):** the same PAT is injected into the container/pod environment by the operator or deployment system (secret, config map, or secret manager). The MCP client itself does not need credentials; the server holds the PAT.
+- **stdio (local):** the PAT is supplied to the server by the local operator via `FORGEJO_TOKEN` in the environment — the standard local-credential path. `FORGEJO_TOKEN` is **required** for the stdio transport.
+- **HTTP/SSE (remote):** the MCP client authenticates each HTTP request with an `Authorization: Bearer <token>` header. The server reads that header on every incoming request, injects the token into the request context, and uses it (as `Authorization: token <PAT>`) on the outbound Forgejo call, overriding any config fallback. `FORGEJO_TOKEN` is **optional** for the HTTP transport (it is not required at startup; it only serves as a fallback when no per-request token is present). **Requests lacking a valid Bearer token are rejected with `401 Unauthorized`.**
 
 OAuth2 would be warranted only if the server had to **delegate authorization to untrusted remote clients** (token exchange with the MCP SDK). That is not the case: `mcp-forgejo` is a server-side client of Forgejo, not an identity provider, and it serves a closed, trusted team. Hence **PAT, no OAuth2** (S2 data-hygiene rules apply to the token; see §5).
 
@@ -41,7 +41,7 @@ Configuration is loaded from the environment with [`kelseyhightower/envconfig`](
 | Env var          | Type       | Default            | Description |
 |------------------|------------|--------------------|-------------|
 | `FORGEJO_URL`    | `string`   | (from env)         | Base URL of the Forgejo instance, e.g. `https://git.example.com`. Required. |
-| `FORGEJO_TOKEN`  | `string`   | (empty)            | Forgejo **personal access token** (PAT). **Secret** — never logged, echoed, or included in tool output (S2/N2). Required for authenticated operations. |
+| `FORGEJO_TOKEN`  | `string`   | (empty)            | Forgejo **personal access token** (PAT). **Secret** — never logged, echoed, or included in tool output (S2/N2). **Required for the stdio transport; optional for the HTTP transport** (over HTTP the token is supplied per-request via `Authorization: Bearer <token>`; `FORGEJO_TOKEN` is only a fallback). |
 | `HOST`           | `string`   | `0.0.0.0`          | Listen host for the HTTP/SSE transport. |
 | `PORT`           | `string`   | `8080`             | Listen port for the HTTP/SSE transport. |
 | `LOG_LEVEL`      | `string`   | (unset)            | Logging level (`trace`, `debug`, `info`, `warn`, `error`). **Unset ⇒ logging disabled** (L2). |
@@ -252,7 +252,7 @@ Representative JSON-Schema-style metadata block (shown for one tool; all tools c
 | 31 | `forgejo_repo_delete` | Delete repository | `repoDelete` | planned | **Permanently delete a repository.** Highly destructive — instructions require explicit user confirmation before invoking. |
 | 33 | `forgejo_org_delete` | Delete organization | `orgDelete` | **implemented** | **Permanently delete an organization.** Highly destructive — confirm before use. |
 
-> **Data-hygiene (S2):** none of the above tools accept or return a token/credential. Auth is injected server-side from `FORGEJO_TOKEN`; outputs never contain it.
+> **Data-hygiene (S2):** none of the above tools accept or return a token/credential. Auth is injected server-side (per-request Bearer token over HTTP, `FORGEJO_TOKEN` over stdio, M6); outputs never contain it.
 
 ---
 
@@ -286,9 +286,23 @@ The Go profile is enforced in CI (`.github/workflows/ci.yml`) and locally:
 | Vuln audit | `govulncheck ./cmd/... ./internal/...` — prod findings **fixed**; test-only deps with no fix excluded (see S5) | C5/N8 |
 | Secret scan (git history) | `gitleaks detect --source . --redact --verbose` over **full history** (`actions/checkout@v4` + `fetch-depth: 0`) — findings **fixed**, never suppressed; no `continue-on-error` | N28/C03 |
 | Architecture | `go-arch-lint check` (`.go-arch-lint.yml` authored) | C6 |
-| **Mutation testing** | `gremlins unleash . --threshold-efficacy=90 --threshold-mcover=30` | **C7/N15/N19 — HARD GATE, fails the build** (no `continue-on-error`; run from the module root `.`, not `./...`) |
+| **Mutation testing** | `gremlins unleash . --threshold-efficacy=90 --threshold-mcover=80 --timeout-coefficient=60` | **C7/N15/N19 — HARD GATE, fails the build** (no `continue-on-error`; run from the module root `.`, not `./...`) |
 
-> **Gremlins mutant-coverage deviation (documented).** `--threshold-mcover` is set to **30** (raised from 0), **not** the canonical 80 goal, because of gremlins 0.6.x's per-mutant timeout behavior on this slow suite: the timeout is derived from the baseline suite time, so in the CI-equivalent (warm Go test cache) run the majority of mutants report "Timed out" and are excluded from the coverage/efficacy accounting, capping reported mutant coverage near **30–35%**. With a cold cache gremlins actually exercises ~91% of mutants, but then ~24 live request-core + e2e-helper mutants pin real efficacy at ~88.7% — below the 90 efficacy gate (which must stay ≥ 90). **Plan to reach 80:** kill those live mutants (restoring efficacy ≥ 90) and raise `--timeout-coefficient` so the timed-out mutants are actually exercised. In the meantime the threshold is set to a value the current gate reliably achieves, and the intent to move it toward 80 is tracked here and in AGENTS.md.
+> **Gremlins `--threshold-mcover` = 80 (goal reached).** The 80 goal is now met
+> by raising `--timeout-coefficient` to 60 per the previously-documented plan.
+> gremlins 0.6.x derives the per-mutant timeout from the baseline suite time
+> (default coefficient 3), so on a warm Go test cache (the CI-equivalent run,
+> `actions/setup-go` `cache: true`) the short timeout made most mutants report
+> "Timed out" and excluded them from the coverage/efficacy accounting — capping
+> reported mutant coverage near **21–35%**. With `--timeout-coefficient=60`
+> every mutant gets a long-enough window: a warm-cache run exercises all 244
+> mutants (0 timed out) and reports **mcover ≈ 83%** with **efficacy ≈ 97%**
+> (≥ 90). The ~6 remaining live mutants are near-equivalent (time-constant
+> arithmetic and `len(query) > 0` / `err != nil` boundary cases) that would need
+> production refactoring to kill, so efficacy is left at ~97%. Note gremlins
+> 0.6.x's warm-cache coverage accounting is fragile (it can report lines as
+> NOT COVERED that `go tool cover` shows at 100%), so the exact reported mcover
+> varies with the run; 80 is set with the ~83% warm-cache measurement in mind.
 
 **Container image (Hybrid → R1/N17):** `.github/workflows/images.yml` builds & publishes the image. Tags:
 

@@ -18,6 +18,8 @@
 #   internal/config          envconfig-driven configuration. No internal deps.
 #   internal/logging         logrus setup, channel per transport. No internal
 #                            deps.
+#   internal/observability   metrics/pprof/probes HTTP handler. No internal
+#                            deps (leaf); used only by cmd.
 #
 # Layer rule: application and infrastructure never import each other; they
 # communicate through interfaces defined in domain. server is the only layer
@@ -44,6 +46,8 @@ components:
     in: internal/config/**
   logging:
     in: internal/logging/**
+  observability:
+    in: internal/observability/**
   e2e:
     in: e2e/**
 
@@ -53,6 +57,7 @@ vendors:
   logrus:      { in: [ github.com/sirupsen/logrus, github.com/sirupsen/logrus/** ] }
   envconfig:   { in: [ github.com/kelseyhightower/envconfig, github.com/kelseyhightower/envconfig/** ] }
   resty:       { in: [ resty.dev/v3, resty.dev/v3/** ] }
+  prometheus:  { in: github.com/prometheus/client_golang/** }
   docker-testsuite: { in: github.com/teran/go-docker-testsuite/** }
   testify:     { in: [ github.com/stretchr/testify, github.com/stretchr/testify/** ] }
 
@@ -76,6 +81,7 @@ deps:
       - server
       - config
       - logging
+      - observability
     canUse:
       - mcp-sdk
       - logrus
@@ -117,6 +123,10 @@ deps:
       - envconfig
   logging:
     canUse:
+      - logrus
+  observability:
+    canUse:
+      - prometheus
       - logrus
 
   # 7. e2e is the end-to-end test stand. It builds the MCP server in-process

@@ -177,7 +177,7 @@ the path is configurable in the SDK options.
 | Env var          | Type       | Default                  | Description                          |
 |------------------|------------|--------------------------|--------------------------------------|
 | `FORGEJO_URL`    | `string`   | (from env)               | Base URL of the Forgejo instance, e.g. `https://git.example.com`. Required. |
-| `FORGEJO_TOKEN`  | `string`   | (empty)                  | Forgejo **personal access token** (PAT). **Secret** — never logged/leaked. Required for authenticated operations. |
+| `FORGEJO_TOKEN`  | `string`   | (empty)                  | Forgejo **personal access token** (PAT). **Secret** — never logged/leaked. **Required for the stdio transport; optional for the HTTP transport** (over HTTP the token is supplied per-request via `Authorization: Bearer <token>`; `FORGEJO_TOKEN` is only a fallback). |
 | `HOST`           | `string`   | `0.0.0.0`                | Listen host for the HTTP/SSE transport. |
 | `PORT`           | `string`   | `8080`                   | Listen port for the HTTP/SSE transport. |
 | `LOG_LEVEL`      | `string`   | (unset)                  | Logging level. **Unset ⇒ logging disabled.** Set (e.g. `info`, `debug`) to enable. |
@@ -213,32 +213,36 @@ and `SPEC.md` §8 B2/B5).
   `SPEC.md` §2 for the justification.
 - **TLS:** never implemented inside the server. Terminate TLS at the reverse
   proxy (nginx / Caddy / ingress) in front of the HTTP/SSE listener.
-- **HTTP/SSE security:** the server performs **no client authentication** at the
-  MCP layer — anyone who can reach `HOST:PORT` can drive every tool with the
-  PAT's privileges. The HTTP/SSE listener **MUST** be placed behind a reverse
-  proxy that enforces client authn/authz (mTLS / OIDC / ACL), and the PAT
-  should belong to a **dedicated low-privilege Forgejo user**. See `SPEC.md` §5
-  (S7).
+- **HTTP/SSE security:** the server authenticates every incoming request with an
+  `Authorization: Bearer <token>` header (rejecting others with `401`) and uses
+  that token (or the `FORGEJO_TOKEN` fallback) against Forgejo. For defense in
+  depth, place the HTTP/SSE listener behind a reverse proxy that enforces client
+  authn/authz (mTLS / OIDC / ACL), and prefer a **dedicated low-privilege Forgejo
+  user** for the token. See `SPEC.md` §5 (S7).
 
-### Token: env var → bearer header
+### Token: per-transport handling
 
-The same PAT is used in **two distinct roles** — do not confuse them:
+The Forgejo PAT is sourced per-transport — the HTTP transport accepts it from the
+client, the stdio transport from the environment:
 
 | Role | When | How |
 |------|------|-----|
-| **Obtain** (env var) | **Startup / configuration** | The server reads the PAT from the **`FORGEJO_TOKEN`** environment variable (required; startup fails if empty). |
-| **Present** (bearer header) | **Every outbound request to Forgejo** | The server sends the token as an **`Authorization: token <PAT>`** header on every call it makes to the Forgejo REST API (see `forgejo.go`). |
+| **Obtain (HTTP)** | **Per incoming HTTP request** | The MCP client sends the PAT as an **`Authorization: Bearer <token>`** header. The server reads it, injects it into the request context, and rejects requests lacking a valid Bearer token with `401 Unauthorized`. |
+| **Obtain (stdio)** | **Startup / configuration** | The server reads the PAT from the **`FORGEJO_TOKEN`** environment variable (**required** for stdio; startup fails if empty). |
+| **Present (outbound)** | **Every outbound request to Forgejo** | The server sends the resolved token as an **`Authorization: token <PAT>`** header on every call it makes to the Forgejo REST API (see `forgejo.go`). A per-request Bearer token overrides the config fallback. |
 
 Two important clarifications:
 
-1. **Inbound (MCP clients):** no bearer header is expected from MCP clients —
-   the server does **not** authenticate incoming requests. Protecting the
-   HTTP/SSE listener is the reverse proxy's job (see above). The `Authorization`
-   header is strictly **outbound**, used only when the server calls Forgejo.
-2. **Not OAuth2:** the `Bearer` scheme is **not** used; Forgejo's PAT mechanism
-   is the `token` scheme (`Authorization: token <PAT>`). The token is **never**
-   logged, leaked in error messages, or echoed in tool outputs (it is redacted
-   to `[REDACTED]`).
+1. **Inbound (HTTP/SSE):** the server **does authenticate** incoming requests —
+   each request must carry an `Authorization: Bearer <token>` header (case-
+   insensitive scheme, non-empty token) or it is rejected with `401`. The `Bearer`
+   header on the MCP listener is **distinct** from the outbound `token` scheme
+   used to call Forgejo. For defense in depth, still place the HTTP/SSE listener
+   behind a reverse proxy that enforces client authn/authz (mTLS / OIDC / ACL).
+2. **Not OAuth2:** the Bearer header is a transport wrapper; Forgejo's PAT
+   mechanism remains the `token` scheme (`Authorization: token <PAT>`). The token
+   is **never** logged, leaked in error messages, or echoed in tool outputs (it is
+   redacted to `[REDACTED]`).
 
 ## Development
 
@@ -250,7 +254,7 @@ gosec ./...                    # findings must be FIXED
 govulncheck ./...              # findings must be FIXED
 go test -coverprofile=cover.out ./...
 go tool cover -func=cover.out | awk '/^total:/ {print $3}'  # must be >= 95%
-gremlins unleash . --threshold-efficacy=90 --threshold-mcover=30  # HARD GATE
+gremlins unleash . --threshold-efficacy=90 --threshold-mcover=80 --timeout-coefficient=60  # HARD GATE
 ```
 
 CI enforces a **95% coverage gate** (build fails below it), the race detector,

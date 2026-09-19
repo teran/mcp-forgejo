@@ -89,7 +89,10 @@ func NewStand(t *testing.T, ctx context.Context) *Stand {
 
 	// 5. Connect an MCP client over the HTTP/SSE StreamableClientTransport.
 	client := mcp.NewClient(&mcp.Implementation{Name: "e2e-client"}, nil)
-	cs, err := client.Connect(ctx, &mcp.StreamableClientTransport{Endpoint: ts.URL}, nil)
+	cs, err := client.Connect(ctx, &mcp.StreamableClientTransport{
+		Endpoint:   ts.URL,
+		HTTPClient: authedClient(pat),
+	}, nil)
 	if err != nil {
 		ts.Close()
 		t.Fatalf("client connect: %v", err)

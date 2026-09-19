@@ -34,6 +34,9 @@ func TestLoadDefaults(t *testing.T) {
 	if cfg.Transport != "stdio" {
 		t.Errorf("Transport default = %q", cfg.Transport)
 	}
+	if cfg.InternalAddr != ":8081" {
+		t.Errorf("InternalAddr default = %q, want :8081", cfg.InternalAddr)
+	}
 	if cfg.LogLevel != "" {
 		t.Errorf("LogLevel default = %q, want empty", cfg.LogLevel)
 	}
@@ -48,6 +51,7 @@ func TestLoadOverrides(t *testing.T) {
 	t.Setenv("LOG_FILENAME", "/var/log/forgejo.log")
 	t.Setenv("LOG_FORMAT", "json")
 	t.Setenv("TRANSPORT", "http-sse")
+	t.Setenv("INTERNAL_ADDR", ":9091")
 
 	cfg, err := Load()
 	if err != nil {
@@ -62,6 +66,9 @@ func TestLoadOverrides(t *testing.T) {
 	if cfg.Transport != "http-sse" {
 		t.Errorf("Transport = %q, want http-sse", cfg.Transport)
 	}
+	if cfg.InternalAddr != ":9091" {
+		t.Errorf("InternalAddr = %q, want :9091", cfg.InternalAddr)
+	}
 }
 
 func TestLoadMissingURL(t *testing.T) {
@@ -74,12 +81,31 @@ func TestLoadMissingURL(t *testing.T) {
 	}
 }
 
-func TestLoadMissingToken(t *testing.T) {
+// TestLoadWithoutToken verifies that FORGEJO_TOKEN is optional: a config
+// without it loads successfully with an empty token (the token is supplied
+// per-request over the HTTP transport).
+func TestLoadWithoutToken(t *testing.T) {
 	t.Setenv("FORGEJO_URL", "https://git.example.dev")
 	t.Setenv("FORGEJO_TOKEN", "")
-	if _, err := Load(); err == nil {
-		t.Fatal("expected error when FORGEJO_TOKEN is empty")
-	} else if !strings.Contains(err.Error(), "FORGEJO_TOKEN") {
-		t.Errorf("error = %v, want FORGEJO_TOKEN mention", err)
+	cfg, err := Load()
+	if err != nil {
+		t.Fatalf("Load() error = %v, want nil when FORGEJO_TOKEN unset", err)
+	}
+	if cfg.ForgejoToken != "" {
+		t.Errorf("ForgejoToken = %q, want empty", cfg.ForgejoToken)
+	}
+}
+
+// TestLoadWithToken verifies that a config with FORGEJO_TOKEN set loads with
+// the token retained.
+func TestLoadWithToken(t *testing.T) {
+	t.Setenv("FORGEJO_URL", "https://git.example.dev")
+	t.Setenv("FORGEJO_TOKEN", "secret")
+	cfg, err := Load()
+	if err != nil {
+		t.Fatalf("Load() error = %v", err)
+	}
+	if cfg.ForgejoToken != "secret" {
+		t.Errorf("ForgejoToken = %q, want %q", cfg.ForgejoToken, "secret")
 	}
 }
