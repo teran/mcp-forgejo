@@ -16,7 +16,7 @@ env:
   GO_VERSION: "1.27"
 
 jobs:
-  # ---- Lint: golangci-lint + go vet ----
+  # ---- Lint: make lint (golangci-lint + go vet) ----
   lint:
     name: Lint (golangci-lint + go vet)
     runs-on: ubuntu-latest
@@ -28,25 +28,20 @@ jobs:
           go-version: ${{ env.GO_VERSION }}
           cache: true
 
-      - name: golangci-lint
-        # v7 is required for golangci-lint v2.x (v6 rejects v2 version strings).
-        uses: golangci/golangci-lint-action@v7
-        with:
-          # Pin a build that supports Go 1.27. "latest" currently resolves to a
-          # binary compiled with Go 1.24, which refuses to load a module
-          # targeting go 1.27.0 (error: "the Go language version used to build
-          # golangci-lint is lower than the targeted Go version").
-          version: v2.13.2
-          # NOTE: golangci-lint-action already invokes `golangci-lint run`, so
-          # args must contain only the paths/flags (NOT `run`). Passing `run
-          # ./...` produced `golangci-lint run run ./...` and failed with
-          # "stat .../run: directory not found".
-          args: ./...
+      - name: Install golangci-lint (pinned, supports Go 1.27)
+        # Pin a build that supports Go 1.27. "latest" currently resolves to a
+        # binary compiled with Go 1.24, which refuses to load a module
+        # targeting go 1.27.0 (error: "the Go language version used to build
+        # golangci-lint is lower than the targeted Go version").
+        run: |
+          curl -sSfL https://raw.githubusercontent.com/golangci/golangci-lint/master/install.sh | sh -s -- -b "$(go env GOPATH)/bin" v2.13.2
 
-      - name: go vet
-        run: go vet ./...
+      - name: Lint (make lint)
+        # `make lint` => golangci-lint run ./... && go vet ./... (R07/N31: CI
+        # binds to the build-system interface).
+        run: make lint
 
-  # ---- Unit tests: -race + hard coverage gate ----
+  # ---- Unit tests: make test (-race + hard coverage gate >= 95%) ----
   test:
     name: Tests (${{ matrix.os }})
     strategy:
@@ -65,25 +60,15 @@ jobs:
           go-version: ${{ env.GO_VERSION }}
           cache: true
 
-      - name: Test with race detector + coverage
-        # shell: bash keeps argument parsing consistent across the matrix; the
-        # default PowerShell on Windows mangles "-coverprofile=cover.out ./...".
+      - name: Test with race detector + coverage gate (make test)
+        # `make test` => go test -race -coverprofile=cover.out -covermode=atomic
+        # ./... followed by the >= 95% coverage gate (fails below 95). The gate
+        # lives in the Makefile so CI binds to the build-system interface (R07/N31).
         shell: bash
-        run: go test -race -coverprofile=cover.out -covermode=atomic ./...
-
-      - name: Enforce coverage >= 95%
-        shell: bash
-        run: |
-          total=$(go tool cover -func=cover.out | awk '/^total:/ {gsub("%","",$3); print $3}')
-          echo "total coverage: ${total}%"
-          if (( $(echo "${total} < 95" | bc -l) )); then
-            echo "::error::Coverage ${total}% is BELOW the 95% threshold — build failed."
-            exit 1
-          fi
-          echo "::notice::Coverage ${total}% meets the >= 95% threshold."
+        run: make test
 
   # ---- End-to-end tests (build-tagged `e2e`; C04/C09GO) ----
-  # Runs `make test-e2e`, i.e. `go test -tags e2e ./...`, through the
+  # Runs `make e2e`, i.e. `go test -tags e2e ./...`, through the
   # go-docker-testsuite harness which spins up a real Forgejo container.
   # Requires the GitHub-hosted Docker daemon (ubuntu-latest provides one).
   # This is a hard gate: NO continue-on-error — a failing e2e test breaks CI.
@@ -99,10 +84,10 @@ jobs:
           go-version: ${{ env.GO_VERSION }}
           cache: true
 
-      - name: Run e2e tests (go-docker-testsuite)
-        # `make test-e2e` => `go test -tags e2e ./...`; the go-docker-testsuite
+      - name: Run e2e tests (make e2e)
+        # `make e2e` => `go test -tags e2e ./...`; the go-docker-testsuite
         # harness brings up the Forgejo container used by the e2e suite.
-        run: make test-e2e
+        run: make e2e
 
   # ---- Static security scan (findings MUST be fixed) ----
   gosec:
@@ -187,8 +172,9 @@ jobs:
         # the committed .go-arch-lint.yml).
         run: go install github.com/fe3dback/go-arch-lint@v1.19.0
 
-      - name: Check architecture
-        run: go-arch-lint check
+      - name: Check architecture (make arch)
+        # `make arch` => go-arch-lint check (R07/N31).
+        run: make arch
 
   # ---- Mutation testing (gremlins) — HARD GATE, fails the build ----
   gremlins:
