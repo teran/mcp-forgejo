@@ -29,12 +29,18 @@ jobs:
           cache: true
 
       - name: Install golangci-lint (pinned, supports Go 1.27)
-        # Pin a build that supports Go 1.27. "latest" currently resolves to a
-        # binary compiled with Go 1.24, which refuses to load a module
-        # targeting go 1.27.0 (error: "the Go language version used to build
-        # golangci-lint is lower than the targeted Go version").
+        # Build from source with `go install` instead of downloading the
+        # precompiled binary via the upstream install.sh. That script verifies
+        # a checksum of the downloaded tarball, which is fragile: a transient
+        # CDN failure can serve wrong/corrupt content and break the lint job.
+        # Building from source guarantees a binary compiled with the CI Go 1.27
+        # toolchain and drops the checksum dependency on a downloaded artifact.
+        # The version is pinned (v2.13.2) so the binary supports go 1.27 modules
+        # and does not change spontaneously. actions/setup-go@v5 already puts
+        # $(go env GOPATH)/bin on PATH, so the `golangci-lint` binary is
+        # available to the subsequent `make lint` step.
         run: |
-          curl -sSfL https://raw.githubusercontent.com/golangci/golangci-lint/master/install.sh | sh -s -- -b "$(go env GOPATH)/bin" v2.13.2
+          go install github.com/golangci/golangci-lint/cmd/golangci-lint@v2.13.2
 
       - name: Lint (make lint)
         # `make lint` => golangci-lint run ./... && go vet ./... (R07/N31: CI
