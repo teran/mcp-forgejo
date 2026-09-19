@@ -527,7 +527,10 @@ func (s *FullSuite) newSecondClient(t *testing.T, token string) *secondConn {
 	require.NoError(t, err)
 	ts := httptest.NewServer(server.NewHTTPHandler(srv))
 	client := mcp.NewClient(&mcp.Implementation{Name: "e2e-second"}, nil)
-	cs, err := client.Connect(s.ctx, &mcp.StreamableClientTransport{Endpoint: ts.URL}, nil)
+	cs, err := client.Connect(s.ctx, &mcp.StreamableClientTransport{
+		Endpoint:   ts.URL,
+		HTTPClient: authedClient(token),
+	}, nil)
 	require.NoError(t, err)
 	return &secondConn{cs: cs, ts: ts, token: token}
 }
@@ -557,8 +560,10 @@ func (s *FullSuite) newSecondUser(t *testing.T) *secondConn {
 	password := "TestPass123!"
 
 	code, raw := s.rawRequest(t, http.MethodPost, "/api/v1/admin/users",
-		map[string]any{"username": username, "email": username + "@example.com",
-			"password": password, "must_change_password": false}, "basic")
+		map[string]any{
+			"username": username, "email": username + "@example.com",
+			"password": password, "must_change_password": false,
+		}, "basic")
 	require.Equalf(t, http.StatusCreated, code, "create second user: %d %s", code, truncate(string(raw)))
 
 	// Grant write collaborator access so the second user can view + review the PR.

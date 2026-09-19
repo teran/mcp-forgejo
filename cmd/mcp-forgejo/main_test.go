@@ -103,6 +103,96 @@ func TestRunHTTPError(t *testing.T) {
 	}
 }
 
+// TestRunHTTPInvokesObservability verifies that in http-sse mode the
+// composition root starts the observability server via the runObservability
+// seam and passes it cfg.InternalAddr.
+func TestRunHTTPInvokesObservability(t *testing.T) {
+	setBaseEnv(t)
+	origHTTP := runHTTPServer
+	origObs := runObservability
+	runHTTPServer = func(context.Context, config.Config, *mcp.Server) error { return nil }
+	called := false
+	var gotAddr string
+	runObservability = func(_ context.Context, cfg config.Config, _ *logrus.Logger) error {
+		called = true
+		gotAddr = cfg.InternalAddr
+		return nil
+	}
+	defer func() {
+		runHTTPServer = origHTTP
+		runObservability = origObs
+	}()
+
+	if code := run([]string{"--transport", "http-sse"}); code != 0 {
+		t.Fatalf("expected exit 0, got %d", code)
+	}
+	if !called {
+		t.Fatal("expected runObservability to be invoked in http-sse mode")
+	}
+	if gotAddr != ":8081" {
+		t.Fatalf("runObservability received InternalAddr = %q, want :8081", gotAddr)
+	}
+}
+
+// TestRunStdioDoesNotInvokeObservability verifies that in stdio mode the
+// observability server is NOT started (the stdio transport owns stdout).
+func TestRunStdioDoesNotInvokeObservability(t *testing.T) {
+	setBaseEnv(t)
+	origStdio := runStdio
+	origObs := runObservability
+	runStdio = func(context.Context, *mcp.Server) error { return nil }
+	called := false
+	runObservability = func(context.Context, config.Config, *logrus.Logger) error {
+		called = true
+		return nil
+	}
+	defer func() {
+		runStdio = origStdio
+		runObservability = origObs
+	}()
+
+	if code := run([]string{"--transport", "stdio"}); code != 0 {
+		t.Fatalf("expected exit 0, got %d", code)
+	}
+	if called {
+		t.Fatal("expected runObservability NOT to be invoked in stdio mode")
+	}
+}
+
+// TestRunStdioRequiresToken verifies that in stdio mode FORGEJO_TOKEN is
+// required: running with --transport stdio and no FORGEJO_TOKEN must fail.
+func TestRunStdioRequiresToken(t *testing.T) {
+	t.Setenv("FORGEJO_URL", "https://git.example.dev")
+	t.Setenv("FORGEJO_TOKEN", "")
+	t.Setenv("LOG_FILENAME", t.TempDir()+"/log.log")
+
+	if code := run([]string{"--transport", "stdio"}); code == 0 {
+		t.Fatal("expected non-zero exit for stdio without FORGEJO_TOKEN")
+	}
+}
+
+// TestRunHTTPSuccessWithoutToken verifies that in http-sse mode FORGEJO_TOKEN
+// is NOT required at startup: the token arrives per-request from the Bearer
+// header, so the server must start successfully without it.
+func TestRunHTTPSuccessWithoutToken(t *testing.T) {
+	t.Setenv("FORGEJO_URL", "https://git.example.dev")
+	t.Setenv("FORGEJO_TOKEN", "")
+	t.Setenv("LOG_FILENAME", t.TempDir()+"/log.log")
+
+	origHTTP := runHTTPServer
+	origObs := runObservability
+	runHTTPServer = func(context.Context, config.Config, *mcp.Server) error { return nil }
+	runObservability = func(context.Context, config.Config, *logrus.Logger) error { return nil }
+	defer func() {
+		runHTTPServer = origHTTP
+		runObservability = origObs
+	}()
+
+	if code := run([]string{"--transport", "http-sse"}); code != 0 {
+		t.Fatalf("expected exit 0 for http-sse without FORGEJO_TOKEN, got %d", code)
+	}
+}
+
 func TestRunUnknownTransport(t *testing.T) {
 	setBaseEnv(t)
 	if code := run([]string{"--transport", "unknown"}); code == 0 {

@@ -112,6 +112,14 @@ func run(args []string) int {
 
 	switch *transport {
 	case "stdio":
+		// The stdio transport has no HTTP Authorization header, so the Forgejo
+		// PAT must come from the environment (M6). HTTP/SSE mode instead accepts
+		// the token per-request from the Authorization: Bearer header, so it is
+		// not required at startup.
+		if cfg.ForgejoToken == "" {
+			logger.Error("FORGEJO_TOKEN is required for the stdio transport")
+			return 1
+		}
 		logger.Info("starting mcp-forgejo in stdio mode")
 		if err := runStdio(ctx, s); err != nil {
 			logger.WithError(err).Error("stdio server failed")

@@ -81,12 +81,31 @@ func TestLoadMissingURL(t *testing.T) {
 	}
 }
 
-func TestLoadMissingToken(t *testing.T) {
+// TestLoadWithoutToken verifies that FORGEJO_TOKEN is optional: a config
+// without it loads successfully with an empty token (the token is supplied
+// per-request over the HTTP transport).
+func TestLoadWithoutToken(t *testing.T) {
 	t.Setenv("FORGEJO_URL", "https://git.example.dev")
 	t.Setenv("FORGEJO_TOKEN", "")
-	if _, err := Load(); err == nil {
-		t.Fatal("expected error when FORGEJO_TOKEN is empty")
-	} else if !strings.Contains(err.Error(), "FORGEJO_TOKEN") {
-		t.Errorf("error = %v, want FORGEJO_TOKEN mention", err)
+	cfg, err := Load()
+	if err != nil {
+		t.Fatalf("Load() error = %v, want nil when FORGEJO_TOKEN unset", err)
+	}
+	if cfg.ForgejoToken != "" {
+		t.Errorf("ForgejoToken = %q, want empty", cfg.ForgejoToken)
+	}
+}
+
+// TestLoadWithToken verifies that a config with FORGEJO_TOKEN set loads with
+// the token retained.
+func TestLoadWithToken(t *testing.T) {
+	t.Setenv("FORGEJO_URL", "https://git.example.dev")
+	t.Setenv("FORGEJO_TOKEN", "secret")
+	cfg, err := Load()
+	if err != nil {
+		t.Fatalf("Load() error = %v", err)
+	}
+	if cfg.ForgejoToken != "secret" {
+		t.Errorf("ForgejoToken = %q, want %q", cfg.ForgejoToken, "secret")
 	}
 }

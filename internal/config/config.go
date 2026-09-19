@@ -21,8 +21,11 @@ type Config struct {
 	InternalAddr string `envconfig:"INTERNAL_ADDR" default:":8081"`
 }
 
-// Load reads configuration from the environment and validates it. ForgejoURL
-// and ForgejoToken are required; the remaining fields have sensible defaults.
+// Load reads configuration from the environment and validates it. ForgejoURL is
+// required; the remaining fields have sensible defaults. ForgejoToken is
+// optional: it is required for the stdio transport (where it is the only source
+// of the Forgejo PAT) and optional for the HTTP transport (where the token
+// arrives per-request from the Authorization: Bearer header).
 func Load() (Config, error) {
 	var c Config
 	if err := envconfig.Process("", &c); err != nil {
@@ -30,9 +33,6 @@ func Load() (Config, error) {
 	}
 	if c.ForgejoURL == "" {
 		return Config{}, errors.New("FORGEJO_URL is required")
-	}
-	if c.ForgejoToken == "" {
-		return Config{}, errors.New("FORGEJO_TOKEN is required")
 	}
 	return c, nil
 }

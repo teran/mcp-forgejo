@@ -109,6 +109,18 @@ func newClient(cfg Config, hc *http.Client) *Client {
 	return &Client{resty: rc, token: cfg.Token}
 }
 
+// applyAuth resolves the Forgejo token for a single outbound request from the
+// context, overriding the base config token when a per-request token is present
+// (HTTP transport: Authorization: Bearer). When the context carries no token it
+// returns req unchanged, so resty falls back to the client-level default header
+// ("token "+cfg.Token) set in newClient. The token is never logged.
+func (c *Client) applyAuth(req *resty.Request, ctx context.Context) *resty.Request {
+	if tok, ok := domain.TokenFromContext(ctx); ok && tok != "" {
+		return req.SetHeader("Authorization", "token "+tok)
+	}
+	return req
+}
+
 // GetRepository implements domain.RepositoryService.
 func (c *Client) GetRepository(ctx context.Context, owner, repo string) (domain.Repository, error) {
 	path := fmt.Sprintf("/api/v1/repos/%s/%s", pathEscape(owner), pathEscape(repo))
@@ -553,6 +565,7 @@ func (c *Client) UpdatePullRequest(ctx context.Context, in domain.UpdatePullRequ
 func (c *Client) IsPullRequestMerged(ctx context.Context, owner, repo string, index int64) (bool, error) {
 	path := fmt.Sprintf("/api/v1/repos/%s/%s/pulls/%s/merge", pathEscape(owner), pathEscape(repo), strconv.FormatInt(index, 10))
 	req := c.resty.R().SetContext(ctx).SetResponseBodyUnlimitedReads(true)
+	req = c.applyAuth(req, ctx)
 	resp, err := req.Execute(http.MethodGet, path)
 	if err != nil {
 		return false, domain.NewForgejoError(domain.KindTransient, domain.Redact(fmt.Sprintf("request failed: %v", err), c.token))
@@ -644,6 +657,7 @@ func (c *Client) UploadReleaseAsset(ctx context.Context, owner, repo string, rel
 		SetResponseBodyUnlimitedReads(true).
 		SetMultipartField("attachment", filename, "application/octet-stream", bytes.NewReader(content)).
 		SetFormData(map[string]string{"name": filename})
+	req = c.applyAuth(req, ctx)
 	if id, ok := domain.RequestIDFromContext(ctx); ok && id != "" {
 		req = req.SetHeader("X-Request-ID", id)
 	}
@@ -1149,6 +1163,7 @@ func (c *Client) do(ctx context.Context, method, path string, query url.Values, 
 	req := c.resty.R().
 		SetContext(ctx).
 		SetResponseBodyUnlimitedReads(true)
+	req = c.applyAuth(req, ctx)
 	if id, ok := domain.RequestIDFromContext(ctx); ok && id != "" {
 		req = req.SetHeader("X-Request-ID", id)
 	}
@@ -1192,6 +1207,7 @@ func (c *Client) doJSON(ctx context.Context, method, path string, body, out any)
 		// repoDeleteFile endpoint requires a JSON body, so enable it. The
 		// flag is a no-op for other methods.
 		SetMethodDeleteAllowPayload(true)
+	req = c.applyAuth(req, ctx)
 	if id, ok := domain.RequestIDFromContext(ctx); ok && id != "" {
 		req = req.SetHeader("X-Request-ID", id)
 	}
@@ -1227,6 +1243,7 @@ func (c *Client) doText(ctx context.Context, method, path string, query url.Valu
 	req := c.resty.R().
 		SetContext(ctx).
 		SetResponseBodyUnlimitedReads(true)
+	req = c.applyAuth(req, ctx)
 	if id, ok := domain.RequestIDFromContext(ctx); ok && id != "" {
 		req = req.SetHeader("X-Request-ID", id)
 	}
