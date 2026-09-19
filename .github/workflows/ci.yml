@@ -201,19 +201,20 @@ jobs:
           # (internal/report assess(): `if et > 0 && tEfficacy <= et`).
           # With --threshold-efficacy=0 the gate can never fail, so it would
           # not be a real hard gate (C7/N15/N19). 90 keeps the gate strict
-          # (current efficacy is 100%) while not tripping on the exact-100
+          # (current efficacy is ~97%) while not tripping on the exact-100
           # boundary that a 100 threshold would.
           #
-          # --threshold-mcover: DOCUMENTED DEVIATION from the 80 goal. Real
-          # mutant coverage is capped near 30-35% in the CI-equivalent (warm
-          # Go test cache) run because gremlins' per-mutant timeout is derived
-          # from the baseline suite time, which excludes the majority of
-          # mutants from the coverage/efficacy accounting on this slow suite
-          # (they report "Timed out" and are neither KILLED nor counted). With
-          # a cold cache gremlins actually tests ~91% of mutants, but then ~24
-          # live request-core + e2e-helper mutants pin real efficacy at ~88.7%,
-          # below the 90 efficacy gate — so the gate can only pass in the
-          # timed-out regime. Plan to reach 80: kill those live mutants to
-          # restore efficacy >= 90 AND raise --timeout-coefficient so the
-          # mutants are actually exercised. See AGENTS.md / SPEC §8.
-          gremlins unleash . --threshold-efficacy=90 --threshold-mcover=30
+          # --threshold-mcover=80 (the canonical goal) is now reached by
+          # raising --timeout-coefficient to 60, per the documented plan.
+          # gremlins 0.6.x derives the per-mutant timeout from the baseline
+          # suite time (default coefficient 3), so on a warm Go test cache the
+          # timeout is short and most mutants report "Timed out", excluded from
+          # the coverage/efficacy accounting (mcover collapsed to ~21% locally
+          # / ~30-35% in CI at the default coefficient). Raising the
+          # coefficient to 60 gives every mutant a long-enough window: a warm
+          # cache run then exercises all 244 mutants (0 timed out) and reports
+          # mcover ~83% with efficacy ~97% (>= 90). The 6 remaining live
+          # mutants are near-equivalent (time-constant arithmetic and
+          # `len(query) > 0` / `err != nil` boundary cases) that need
+          # production refactoring to kill, so efficacy is left at ~97%.
+          gremlins unleash . --threshold-efficacy=90 --threshold-mcover=80 --timeout-coefficient=60
