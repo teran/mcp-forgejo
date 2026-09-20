@@ -61,10 +61,15 @@ jobs:
       - name: Install goreleaser
         # goreleaser-action@v6 requires the `args` input; we use `check` so it
         # installs the prebuilt binary (no compile) AND validates .goreleaser.yaml.
-        # The binary is then invoked by `make container-image`.
+        # The action does NOT add goreleaser to PATH for later steps, so the next
+        # step exposes its install dir via `outputs.path`.
+        id: goreleaser
         uses: goreleaser/goreleaser-action@v6
         with:
           args: check
+
+      - name: Add goreleaser to PATH
+        run: echo "${{ steps.goreleaser.outputs.path }}" >> "$GITHUB_PATH"
 
       - name: Build binary + image (make container-image)
         # Binds to the build-system interface (R07/N31). `make container-image`
