@@ -7,19 +7,19 @@
 [![License](https://img.shields.io/github/license/teran/mcp-forgejo)](LICENSE)
 [![MCP](https://img.shields.io/badge/MCP-Server-blue)](https://modelcontextprotocol.io)
 [![Go Version](https://img.shields.io/github/go-mod/go-version/teran/mcp-forgejo)](go.mod)
+[![Go Reference](https://pkg.go.dev/badge/github.com/teran/mcp-forgejo.svg)](https://pkg.go.dev/github.com/teran/mcp-forgejo)
 [![Test Coverage](https://img.shields.io/badge/coverage-%E2%89%A595%25-brightgreen)](https://github.com/teran/mcp-forgejo/actions/workflows/ci.yml)
 [![gosec](https://img.shields.io/badge/gosec-passing-brightgreen)](https://github.com/teran/mcp-forgejo/actions/workflows/ci.yml)
 [![govulncheck](https://img.shields.io/badge/govulncheck-passing-brightgreen)](https://github.com/teran/mcp-forgejo/actions/workflows/ci.yml)
 [![gremlins](https://img.shields.io/badge/gremlins-passing-brightgreen)](https://github.com/teran/mcp-forgejo/actions/workflows/ci.yml)
 
-> **Badge note:** a `pkg.go.dev` / "Go Reference" badge is **intentionally
-> omitted** to keep the README focused on the CI-enforced quality gates; the
-> module path is `github.com/teran/mcp-forgejo`. The **Test Coverage**,
-> **gosec**, **govulncheck** and **gremlins**
-> badges above are **placeholders wired to the CI source** — the checks they
-> represent are enforced in `.github/workflows/ci.yml` (the `coverage` gate
-> requires **≥ 95%**, gosec/govulncheck findings are fixed-not-suppressed, and
-> gremlins runs as a hard mutation-testing gate).
+> **Badge note:** the **Go Reference** badge above links to
+> `https://pkg.go.dev/github.com/teran/mcp-forgejo` (module path
+> `github.com/teran/mcp-forgejo`). The **Test Coverage**, **gosec**,
+> **govulncheck** and **gremlins** badges are **placeholders wired to the CI
+> source** — the checks they represent are enforced in `.github/workflows/ci.yml`
+> (the `coverage` gate requires **≥ 95%**, gosec/govulncheck findings are
+> fixed-not-suppressed, and gremlins runs as a hard mutation-testing gate).
 
 A [Model Context Protocol](https://modelcontextprotocol.io) server that wraps the
 **Forgejo REST API** so a model-driven client can perform common
@@ -178,8 +178,9 @@ the path is configurable in the SDK options.
 |------------------|------------|--------------------------|--------------------------------------|
 | `FORGEJO_URL`    | `string`   | (from env)               | Base URL of the Forgejo instance, e.g. `https://git.example.com`. Required. |
 | `FORGEJO_TOKEN`  | `string`   | (empty)                  | Forgejo **personal access token** (PAT). **Secret** — never logged/leaked. **Required for the stdio transport; optional for the HTTP transport** (over HTTP the token is supplied per-request via `Authorization: Bearer <token>`; `FORGEJO_TOKEN` is only a fallback). |
-| `HOST`           | `string`   | `0.0.0.0`                | Listen host for the HTTP/SSE transport. |
-| `PORT`           | `string`   | `8080`                   | Listen port for the HTTP/SSE transport. |
+| `HOST`           | `string`   | `0.0.0.0`                | Listen host for the HTTP/SSE MCP transport. |
+| `PORT`           | `string`   | `8080`                   | Listen port for the HTTP/SSE MCP transport. The MCP listen address is `HOST:PORT` (there is **no** `LISTEN_ADDR`). |
+| `INTERNAL_ADDR`  | `string`   | `:8081`                  | **Internal observability address** — separate listener for `/metrics`, `/debug/pprof/*`, `/healthz`, `/readyz` (HTTP/SSE mode only; see [Metrics & Observability](#metrics--observability)). |
 | `LOG_LEVEL`      | `string`   | (unset)                  | Logging level. **Unset ⇒ logging disabled.** Set (e.g. `info`, `debug`) to enable. |
 | `LOG_FILENAME`   | `string`   | `/tmp/mcp-forgejo.log`   | Log file path for **stdio** transport (chmod 600). Ignored for HTTP/SSE (logs go to stdout, 12-factor). |
 | `LOG_FORMAT`     | `string`   | `text`                   | `text` (logrus text, full absolute timestamp) or `json`. |
@@ -202,6 +203,25 @@ Starting mcp-forgejo/1.2.3 (commit: abc1234; built at 2026-09-10T12:00:00Z)
 The banner is populated at **build time** via ldflags
 (`appName`/`appVersion`/`appCommitHash`/`appTimestamp`, see `.goreleaser.yaml`
 and `SPEC.md` §8 B2/B5).
+
+### Metrics & Observability
+
+In **HTTP/SSE** mode the server exposes an **observability endpoint on a separate
+internal listener**, `INTERNAL_ADDR` (default **`:8081`**), distinct from the MCP
+listen address (`HOST:PORT`, default `0.0.0.0:8080`). It is **always enabled** in
+HTTP/SSE mode — there is no opt-out — and is **not** started in stdio mode. A reverse
+proxy should forward **only** the MCP listener, never the observability one.
+
+| Endpoint | Purpose |
+|----------|---------|
+| `GET /metrics` | Prometheus metrics — **standard Go collectors** (runtime/memstats + net/http) via the promhttp default registry. |
+| `GET /debug/pprof/…` | `net/http/pprof` profiling (`cmdline`, `profile`, `symbol`, `trace`). |
+| `GET /healthz` | Liveness probe (always `200`). |
+| `GET /readyz` | Readiness probe (always `200`). |
+
+These are served by their **own `http.Server`**, separate from the MCP JSON-RPC/SSE
+flow. Only the **standard Go collectors** are exposed — there are **no upstream
+Forgejo response metrics** (O3 is not implemented). See `SPEC.md` §7.1.
 
 ## Transports & Auth
 
@@ -255,11 +275,29 @@ govulncheck ./...              # findings must be FIXED
 go test -coverprofile=cover.out ./...
 go tool cover -func=cover.out | awk '/^total:/ {print $3}'  # must be >= 95%
 gremlins unleash . --threshold-efficacy=90 --threshold-mcover=80 --timeout-coefficient=60  # HARD GATE
+make e2e                       # e2e tests (needs Docker); also: make e2e-cover
 ```
 
 CI enforces a **95% coverage gate** (build fails below it), the race detector,
 lint, gosec, govulncheck, `go-arch-lint`, and **gremlins** (mutation testing) as
 a hard gate. See `.github/workflows/ci.yml`.
+
+### End-to-end tests (e2e)
+
+The `e2e/` suite verifies the **full path between the MCP tool handler and a real
+Forgejo backend**. It runs through the
+[`github.com/teran/go-docker-testsuite`](https://github.com/teran/go-docker-testsuite)
+harness, which spins up a real Forgejo container (requires a Docker daemon):
+
+```bash
+make e2e          # go test -tags e2e ./...
+make e2e-cover    # e2e with a separate coverage profile (e2e-cover.out)
+```
+
+Every file in `e2e/` carries a `//go:build e2e` build tag, so the suite is
+**excluded from the default unit run** (`go test ./...` / `make test`). CI runs it
+in a **dedicated `e2e` job** as a **hard gate** (a failing e2e test breaks the build).
+See `SPEC.md` §8 (T2/C4/N30).
 
 ## Architecture
 
