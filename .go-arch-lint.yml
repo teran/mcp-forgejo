@@ -6,19 +6,19 @@
 #   cmd/mcp-forgejo          composition root — wires config, logging, the
 #                            Forgejo client, the tool registry and the chosen
 #                            transport driver. May import every internal package.
-#   internal/domain          pure entities (Repo, File, Issue, PullRequest,
+#   domain          pure entities (Repo, File, Issue, PullRequest,
 #                            Release, Organization, Comment, Branch). No deps.
-#   internal/application     use cases / tool handlers. Depends only on domain
+#   application     use cases / tool handlers. Depends only on domain
 #                            interfaces.
-#   internal/infrastructure  the Forgejo REST client + HTTP transport. Depends
+#   infrastructure  the Forgejo REST client + HTTP transport. Depends
 #                            only on domain interfaces.
-#   internal/server          MCP tool registry + transport wiring (stdio driver,
+#   server          MCP tool registry + transport wiring (stdio driver,
 #                            http/sse driver). Depends on domain/application/
 #                            infrastructure.
-#   internal/config          envconfig-driven configuration. No internal deps.
-#   internal/logging         logrus setup, channel per transport. No internal
+#   config          envconfig-driven configuration. No internal deps.
+#   logging         logrus setup, channel per transport. No internal
 #                            deps.
-#   internal/observability   metrics/pprof/probes HTTP handler. No internal
+#   observability   metrics/pprof/probes HTTP handler. No internal
 #                            deps (leaf); used only by cmd.
 #
 # Layer rule: application and infrastructure never import each other; they
@@ -35,19 +35,19 @@ components:
   cmd:
     in: cmd/**
   domain:
-    in: internal/domain/**
+    in: domain/**
   application:
-    in: internal/application/**
+    in: application/**
   infrastructure:
-    in: internal/infrastructure/**
+    in: infrastructure/**
   server:
-    in: internal/server/**
+    in: server/**
   config:
-    in: internal/config/**
+    in: config/**
   logging:
-    in: internal/logging/**
+    in: logging/**
   observability:
-    in: internal/observability/**
+    in: observability/**
   e2e:
     in: e2e/**
 

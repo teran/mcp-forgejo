@@ -169,7 +169,7 @@ export LOG_FORMAT=text                # or "json"
 ```
 
 The client connects to the MCP **streamable HTTP** endpoint served at the
-listener root (the SDK's `StreamableHTTPHandler`, see `internal/server/http.go`);
+listener root (the SDK's `StreamableHTTPHandler`, see `server/http.go`);
 the path is configurable in the SDK options.
 
 ### Configuration (env vars)
@@ -264,7 +264,7 @@ a hard gate. See `.github/workflows/ci.yml`.
 ## Architecture
 
 See [`SPEC.md`](SPEC.md) for the application-level architecture: package layout
-(`cmd/` + `internal/`), the tool registry, transport wiring, config, security,
+(`cmd/` + top-level packages), the tool registry, transport wiring, config, security,
 logging, and error handling.
 
 ## Contributing / TDD
