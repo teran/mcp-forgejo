@@ -32,6 +32,12 @@ instance over HTTP; it **never touches the local filesystem** (so there is **no
   headers, M6; requests without a valid Bearer token get `401`); **stdio**
   requires `FORGEJO_TOKEN` env (local auth via env). The resolved token is sent
   outbound as `Authorization: token <PAT>` on every Forgejo call. **No OAuth2.**
+- **Observability (Hybrid/Remote):** HTTP/SSE mode **always** starts the internal
+  observability listener on `INTERNAL_ADDR` (default `:8081`) — `/metrics` (standard
+  Go collectors), `/debug/pprof/*`, `/healthz`, `/readyz` — with **no opt-out**
+  (O1/O4/N32). It is **not** started in stdio mode. The MCP listen address is
+  `HOST:PORT` (default `0.0.0.0:8080`); there is no `LISTEN_ADDR`. Only standard Go
+  metrics are exposed — no upstream Forgejo metrics (O3). See SPEC.md §7.1.
 
 ## TDD workflow (T1)
 
@@ -56,6 +62,7 @@ govulncheck ./...                       # vuln audit; findings FIXED, not suppre
 gitleaks detect --source . --redact --verbose   # secret scan over git history (full clone); findings FIXED
 go-arch-lint check                      # dependency rules (.go-arch-lint.yml)
 gremlins unleash . --threshold-efficacy=90 --threshold-mcover=80 --timeout-coefficient=60  # HARD GATE
+make e2e                                # e2e via go-docker-testsuite (build tag `e2e`); needs Docker — HARD GATE in CI
 ```
 
 > **Gremlins `--threshold-mcover` = 80 (goal reached) with

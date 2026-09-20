@@ -42,8 +42,9 @@ Configuration is loaded from the environment with [`kelseyhightower/envconfig`](
 |------------------|------------|--------------------|-------------|
 | `FORGEJO_URL`    | `string`   | (from env)         | Base URL of the Forgejo instance, e.g. `https://git.example.com`. Required. |
 | `FORGEJO_TOKEN`  | `string`   | (empty)            | Forgejo **personal access token** (PAT). **Secret** — never logged, echoed, or included in tool output (S2/N2). **Required for the stdio transport; optional for the HTTP transport** (over HTTP the token is supplied per-request via `Authorization: Bearer <token>`; `FORGEJO_TOKEN` is only a fallback). |
-| `HOST`           | `string`   | `0.0.0.0`          | Listen host for the HTTP/SSE transport. |
-| `PORT`           | `string`   | `8080`             | Listen port for the HTTP/SSE transport. |
+| `HOST`           | `string`   | `0.0.0.0`          | Listen host for the HTTP/SSE MCP transport. |
+| `PORT`           | `string`   | `8080`             | Listen port for the HTTP/SSE MCP transport. The MCP listen address is `HOST:PORT` (there is **no** `LISTEN_ADDR`; the listener is configured through `HOST`+`PORT`, see §7.1). |
+| `INTERNAL_ADDR`  | `string`   | `:8081`            | **Internal observability address** — a separate listener for `/metrics`, `/debug/pprof/*`, `/healthz`, `/readyz`, distinct from the MCP listen address (O1/O4/N32). Only started in HTTP/SSE mode (see §7.1). |
 | `LOG_LEVEL`      | `string`   | (unset)            | Logging level (`trace`, `debug`, `info`, `warn`, `error`). **Unset ⇒ logging disabled** (L2). |
 | `LOG_FILENAME`   | `string`   | `/tmp/mcp-forgejo.log` | Log file path for the **stdio** transport (chmod **600**). Ignored for HTTP/SSE (L1, L3). |
 | `LOG_FORMAT`     | `string`   | `text`             | `text` (logrus text, full absolute timestamp) or `json` (L4). |
@@ -162,13 +163,12 @@ All tools target the **closed domain** of the configured Forgejo instance (`open
 
 **Common request parameters:** `owner`, `repo`, `ref`/`branch`, pagination `page` (1-based) + `limit`. **Common errors:** 401, 403, 404, 422, 409, 423. Content in file operations is base64-encoded over the wire; bodies carry commit metadata (message, branch, `new_branch`, author).
 
-> **Status.** §6 describes the **target tool surface** (the roadmap/design). The
-> actual implementation is delivered in **stages**: **Stage 1** currently
-> implements the **5 read tools** marked `implemented` below
-> (`forgejo_repo_get`, `forgejo_org_list`, `forgejo_repo_list_contents`,
-> `forgejo_file_get`, `forgejo_issue_get`). All other tools in this section are
-> **planned** (target surface) and are **not** yet registered in the running
-> server — do not assume they exist until implemented.
+> **Status.** §6 documents the **implemented** tool surface: **all 51 tools** below
+> are registered in the running server via `mcp.AddTool(...)` in `server/server.go`
+> (the single tool registry, §4.2) and are grouped **read → write/update → delete**
+> (S3). There is no separate "target" vs "implemented" split — what is listed here
+> is what the server actually exposes, over both stdio and HTTP/SSE. The tool count
+> is verified from the registry: 19 read + 22 write/update + 10 delete = **51**.
 
 ### 6.0 Metadata conventions
 
@@ -203,59 +203,81 @@ Representative JSON-Schema-style metadata block (shown for one tool; all tools c
 }
 ```
 
-### 6.1 READ — `readOnlyHint: true`, `openWorldHint: false`
+### 6.1 READ — `readOnlyHint: true`, `openWorldHint: false` (19 tools)
 
-| # | Tool | Title | Forgejo operationId(s) | Status | Instructions (abridged) |
-|---|------|-------|------------------------|--------|--------------------------|
-| 1 | `forgejo_repo_search` | Search repositories | `repoSearch` | planned | Search the Forgejo instance by `q`, `topic`, `sort`, `order`, `private`. Returns matching repos (id, full name, visibility, default branch, description). `idempotentHint: true`. |
-| 2 | `forgejo_repo_get` | Get repository | `repoGet`, `repoGetByID` | **implemented** | Return details of one repo by owner+name (or id). Read-only; never modifies. |
-| 3 | `forgejo_org_list` | List my organizations | `orgListCurrentUserOrgs` | **implemented** | List the organizations the current user belongs to. Read-only. |
-| 4 | `forgejo_repo_list_contents` | List directory contents | `repoGetContentsList` | **implemented** | List entries (type/sha/size) in a directory at `path`+`ref`. Read-only. |
-| 5 | `forgejo_file_get` | Read file | `repoGetContents`, `repoGetRawFile` | **implemented** | Return base64-decoded UTF-8 content of a file at `path`+`ref`, plus commit/sha metadata (see block above). Read-only. |
-| 6 | `forgejo_diff_get` | Get diff | `repoCompareDiff`, `repoDownloadPullDiffOrPatch` | planned | Return a unified diff between two refs (`basehead`) or for a PR, as text. Read-only. |
-| 7 | `forgejo_commit_list` | List commits | `repoGetAllCommits` | planned | List commits of a repo branch with pagination. Read-only. |
-| 8 | `forgejo_branch_list` | List branches | `repoListBranches` | planned | List branches of a repo. Read-only. |
-| 9 | `forgejo_issue_list` | List issues | `issueListIssues` | planned | List issues with a `state` filter (`open`/`closed`/`all`) + pagination. Read-only. |
-| 10 | `forgejo_issue_get` | Get issue + comments | `issueGetIssue`, `issueGetComments` | **implemented** | Single call returning an issue **and** its comments. Read-only. |
-| 11 | `forgejo_pull_list` | List pull requests | `repoListPullRequests` | planned | List PRs with a `state` filter + pagination. Read-only. |
-| 12 | `forgejo_pull_get` | Get pull request + files + checks | `repoGetPullRequest`, `repoGetPullRequestFiles`, `repoGetCombinedStatusByRef` | planned | Single call returning a PR **with** its changed files **and** combined checks status. Read-only. |
-| 13 | `forgejo_release_list` | List releases | `repoListReleases`, `repoGetLatestRelease` | planned | List releases of a repo, or fetch the latest. Read-only. |
+| # | Tool | Title | Forgejo operationId(s) | Instructions (abridged) |
+|---|------|-------|------------------------|--------------------------|
+| 1 | `forgejo_repo_search` | Search repositories | `repoSearch` | Search the Forgejo instance by `q`, `topic`, `sort`, `order`, `private`. Returns matching repos. `idempotentHint: true`. |
+| 2 | `forgejo_repo_get` | Get repository | `repoGet`, `repoGetByID` | Return details of one repo by owner+name (or id). Read-only; never modifies. |
+| 3 | `forgejo_repo_list_contents` | List directory contents | `repoGetContentsList` | List entries (type/sha/size) in a directory at `path`+`ref`. Read-only. |
+| 4 | `forgejo_file_get` | Read file | `repoGetContents`, `repoGetRawFile` | Return base64-decoded UTF-8 content of a file at `path`+`ref`, plus commit/sha metadata (see block above). Binary blobs return a `binary` flag instead of decoding. Read-only. |
+| 5 | `forgejo_org_list` | List my organizations | `orgListCurrentUserOrgs` | List the organizations the current user belongs to. Read-only. |
+| 6 | `forgejo_issue_get` | Get issue + comments | `issueGetIssue`, `issueGetComments` | Single call returning an issue **and** its comments. Read-only. |
+| 7 | `forgejo_issue_list` | List issues | `issueListIssues` | List issues with a `state` filter (`open`/`closed`/`all`) + pagination. Read-only. |
+| 8 | `forgejo_diff_get` | Get diff | `repoCompareDiff`, `repoDownloadPullDiffOrPatch` | Return a unified diff between two refs (`basehead`) or for a PR, as text. Read-only. |
+| 9 | `forgejo_commit_list` | List commits | `repoGetAllCommits` | List commits of a repo branch with pagination. Read-only. |
+| 10 | `forgejo_branch_list` | List branches | `repoListBranches` | List branches of a repo. Read-only. |
+| 11 | `forgejo_branch_get` | Get branch | `repoGetBranch` | Return a single branch of a repository by name. Read-only. |
+| 12 | `forgejo_pull_list` | List pull requests | `repoListPullRequests` | List PRs with a `state` filter + pagination. Read-only. |
+| 13 | `forgejo_pull_get` | Get pull request + files + checks | `repoGetPullRequest`, `repoGetPullRequestFiles`, `repoGetCombinedStatusByRef` | Single call returning a PR **with** its changed files **and** combined checks status. Read-only. |
+| 14 | `forgejo_release_list` | List releases | `repoListReleases`, `repoGetLatestRelease` | List releases of a repo, or fetch the latest. Read-only. |
+| 15 | `forgejo_tag_list` | List tags | `repoListTags` | List the git tags of a repository. Read-only. |
+| 16 | `forgejo_milestone_list` | List milestones | `issueGetMilestonesList` | List the milestones of a repository. Read-only. |
+| 17 | `forgejo_label_list` | List labels | `issueListLabels` | List the labels of a repository. Read-only. |
+| 18 | `forgejo_user_get` | Get user | `userGet`, `userGetCurrent` | Return a user by username; when `username` is omitted, return the current authenticated user. Read-only. |
+| 19 | `forgejo_user_list` | Search users | `userSearch` | Search Forgejo users by a query string. Read-only. |
 
-### 6.2 WRITE / UPDATE — `readOnlyHint: false`, `destructiveHint: false`
+### 6.2 WRITE / UPDATE — `readOnlyHint: false`, `destructiveHint: false` (22 tools)
 
-| # | Tool | Title | Forgejo operationId(s) | Status | `idempotent` | Instructions (abridged) |
-|---|------|-------|------------------------|--------|--------------|--------------------------|
-| 14 | `forgejo_repo_create` | Create repository | `createCurrentUserRepo` | **implemented** | false | Create a repo (`name`, optional `owner`/org, `private`, `auto_init`, plus template fields `license`, `gitignores`, `default_branch`, `readme`). Creating a name that already exists **conflicts** — not idempotent. |
-| 15 | `forgejo_file_write` | Write/update file | `repoCreateFile`, `repoUpdateFile` | planned | false | **Single call covering create AND update**: write `content` (text, base64-encoded on the wire) at `path`+`branch` with a commit `message`. Creates if absent, updates if present. Not idempotent: every call records a new commit (the blob sha changes), even for identical content. |
-| 16 | `forgejo_file_write_many` | Write multiple files | `repoChangeFiles` | planned | false | Modify several files in **one commit** (multi-file single commit) at a branch with a commit message. |
-| 17 | `forgejo_branch_create` | Create branch | `repoCreateBranch` | planned | false | Create a branch from an existing ref. Creating an existing branch **conflicts**. |
-| 18 | `forgejo_issue_create` | Create issue | `issueCreateIssue` | planned | false | Create an issue with `title`, `body`, `labels`, `milestone`. |
-| 19 | `forgejo_issue_update` | Update/close/reopen issue | `issueEditIssue` | planned | true | **Single tool handles edit + close + reopen**: update fields; set `state` to `open`/`closed`. Repeating the same edit is idempotent. |
-| 20 | `forgejo_issue_comment_add` | Add issue comment | `issueCreateComment` | planned | false | Append a comment to an issue. Each call adds a new comment. |
-| 21 | `forgejo_pull_create` | Create pull request | `repoCreatePullRequest` | planned | false | Open a PR from `head`→`base` with `title`/`body`. |
-| 22 | `forgejo_pull_update` | Update/close/reopen PR | `repoEditPullRequest` | planned | true | **Single tool handles edit + close + reopen**: update fields; set `state`. |
-| 23 | `forgejo_pull_merge` | Merge pull request | `repoMergePullRequest`, `repoPullRequestIsMerged` | planned | false | Merge a PR with a `merge`/`squash`/`rebase` method and report the result (merged vs already-merged). |
-| 24 | `forgejo_pull_review` | Review pull request | `repoCreatePullReview`, `repoSubmitPullReview` | planned | false | **Create AND submit** a PR review (`approve`/`comment`/`request_changes`) in one call. |
-| 25 | `forgejo_release_create` | Create release | `repoCreateRelease` | planned | false | Create a release for an existing `tag` with `title`/`notes`. |
-| 32 | `forgejo_org_create` | Create organization | `orgCreate` | **implemented** | false | Create an organization (`username`, optional `description`, `full_name`). Creating a name that already exists **conflicts** — not idempotent. |
+`idempotentHint: true` is set only where repeating with identical args has no extra effect; `false` where every call records a new resource/commit.
 
-### 6.3 DELETE — `readOnlyHint: false`, `destructiveHint: true`
+| # | Tool | Title | Forgejo operationId(s) | `idempotent` | Instructions (abridged) |
+|---|------|-------|------------------------|--------------|--------------------------|
+| 20 | `forgejo_repo_create` | Create repository | `createCurrentUserRepo`, `orgCreateRepo` | false | Create a repo (`name`, optional `owner`/org, `private`, `auto_init`, plus template fields). Creating a name that already exists **conflicts** — not idempotent. |
+| 21 | `forgejo_repo_update` | Update repository | `repoEdit` | true | Edit a repo's description, website, default branch or visibility. Repeating the same edit is idempotent. |
+| 22 | `forgejo_repo_fork` | Fork repository | `repoCreateFork` | false | Fork a repository into an organization or user namespace. Not idempotent. |
+| 23 | `forgejo_org_create` | Create organization | `orgCreate` | false | Create an organization (`username`, optional `description`, `full_name`). Creating a name that already exists **conflicts** — not idempotent. |
+| 24 | `forgejo_file_write` | Write/update file | `repoCreateFile`, `repoUpdateFile` | false | **Single call covering create AND update**: write `content` (text, base64-encoded on the wire) at `path`+`branch` with a commit `message`. Creates if absent, updates if present. Not idempotent: every call records a new commit. |
+| 25 | `forgejo_file_write_many` | Write multiple files | `repoChangeFiles` | false | Modify several files in **one commit** (multi-file single commit) at a branch with a commit message. |
+| 26 | `forgejo_branch_create` | Create branch | `repoCreateBranch` | false | Create a branch from an existing ref. Creating an existing branch **conflicts**. |
+| 27 | `forgejo_issue_create` | Create issue | `issueCreateIssue` | false | Create an issue with `title`, `body`, `labels`, `milestone`. |
+| 28 | `forgejo_issue_update` | Update/close/reopen issue | `issueEditIssue` | true | **Single tool handles edit + close + reopen**: update fields; set `state` to `open`/`closed`. Repeating the same edit is idempotent. |
+| 29 | `forgejo_issue_comment_add` | Add issue comment | `issueCreateComment` | false | Append a comment to an issue. Each call adds a new comment. |
+| 30 | `forgejo_issue_set_labels` | Set issue labels | `issueReplaceLabels` | true | Replace the exact set of labels on an issue by their IDs. Repeating the same set is idempotent. |
+| 31 | `forgejo_pull_create` | Create pull request | `repoCreatePullRequest` | false | Open a PR from `head`→`base` with `title`/`body`. |
+| 32 | `forgejo_pull_update` | Update/close/reopen PR | `repoEditPullRequest` | true | **Single tool handles edit + close + reopen**: update fields; set `state`. |
+| 33 | `forgejo_pull_merge` | Merge pull request | `repoMergePullRequest`, `repoPullRequestIsMerged` | false | Merge a PR with a `merge`/`squash`/`rebase` method and report the result (merged vs already-merged). |
+| 34 | `forgejo_pull_review` | Review pull request | `repoCreatePullReview`, `repoSubmitPullReview` | false | **Create AND submit** a PR review (`approve`/`comment`/`request_changes`) in one call. |
+| 35 | `forgejo_release_create` | Create release | `repoCreateRelease` | false | Create a release for an existing `tag` with `title`/`notes`. |
+| 36 | `forgejo_release_asset_upload` | Upload release asset | `repoCreateReleaseAttachment` | false | Upload content (base64) as a named file attachment to a release. Not idempotent: each call creates a new asset. |
+| 37 | `forgejo_tag_create` | Create tag | `repoCreateTag` | false | Create a git tag pointing at a ref with an optional message. Creating an existing tag **conflicts**. |
+| 38 | `forgejo_milestone_create` | Create milestone | `issueCreateMilestone` | false | Create a milestone with a title, description and due date. Creating an existing title **conflicts**. |
+| 39 | `forgejo_milestone_update` | Update milestone | `issueEditMilestone` | true | Edit a milestone's title, description, state or due date. Repeating the same edit is idempotent. |
+| 40 | `forgejo_label_create` | Create label | `issueCreateLabel` | false | Create a label with a name, color and description. Creating an existing name **conflicts**. |
+| 41 | `forgejo_label_update` | Update label | `issueEditLabel` | true | Edit a label's name, color or description. Repeating the same edit is idempotent. |
 
-| # | Tool | Title | Forgejo operationId(s) | Status | Instructions (abridged) |
-|---|------|-------|------------------------|--------|--------------------------|
-| 26 | `forgejo_file_delete` | Delete file | `repoDeleteFile` | planned | Delete a file at `path`+`branch` with a commit `message`. **Destructive** — confirm before use. |
-| 27 | `forgejo_branch_delete` | Delete branch | `repoDeleteBranch` | planned | Delete a branch. **Destructive** — confirm before use; will not delete the default branch. |
-| 28 | `forgejo_issue_delete` | Delete issue | `issueDelete` | planned | Permanently delete an issue. **Destructive** — confirm before use. |
-| 29 | `forgejo_comment_delete` | Delete comment | `issueDeleteComment` | planned | Delete an issue/PR comment. **Destructive** — confirm before use. |
-| 30 | `forgejo_release_delete` | Delete release | `repoDeleteRelease` | planned | Delete a release (tag remains). **Destructive** — confirm before use. |
-| 31 | `forgejo_repo_delete` | Delete repository | `repoDelete` | planned | **Permanently delete a repository.** Highly destructive — instructions require explicit user confirmation before invoking. |
-| 33 | `forgejo_org_delete` | Delete organization | `orgDelete` | **implemented** | **Permanently delete an organization.** Highly destructive — confirm before use. |
+### 6.3 DELETE — `readOnlyHint: false`, `destructiveHint: true` (10 tools)
+
+All delete tools are **destructive** (S12 / HITL) and **not idempotent** (deleting an already-removed resource typically errors).
+
+| # | Tool | Title | Forgejo operationId(s) | Instructions (abridged) |
+|---|------|-------|------------------------|--------------------------|
+| 42 | `forgejo_file_delete` | Delete file | `repoDeleteFile` | Delete a file at `path`+`branch` with a commit `message`. **Destructive** — confirm before use. |
+| 43 | `forgejo_branch_delete` | Delete branch | `repoDeleteBranch` | Delete a branch. **Destructive** — confirm before use; will not delete the default branch. |
+| 44 | `forgejo_issue_delete` | Delete issue | `issueDelete` | Permanently delete an issue. **Destructive** — confirm before use. |
+| 45 | `forgejo_comment_delete` | Delete comment | `issueDeleteComment` | Delete an issue/PR comment. **Destructive** — confirm before use. |
+| 46 | `forgejo_release_delete` | Delete release | `repoDeleteRelease` | Delete a release (tag remains). **Destructive** — confirm before use. |
+| 47 | `forgejo_repo_delete` | Delete repository | `repoDelete` | **Permanently delete a repository.** Highly destructive — instructions require explicit user confirmation before invoking. |
+| 48 | `forgejo_org_delete` | Delete organization | `orgDelete` | **Permanently delete an organization.** Highly destructive — confirm before use. |
+| 49 | `forgejo_tag_delete` | Delete tag | `repoDeleteTag` | Delete a git tag by its name. **Destructive** — confirm before use. |
+| 50 | `forgejo_milestone_delete` | Delete milestone | `issueDeleteMilestone` | Delete a milestone by its ID. **Destructive** — confirm before use. |
+| 51 | `forgejo_label_delete` | Delete label | `issueDeleteLabel` | Delete a label by its ID. **Destructive** — confirm before use. |
 
 > **Data-hygiene (S2):** none of the above tools accept or return a token/credential. Auth is injected server-side (per-request Bearer token over HTTP, `FORGEJO_TOKEN` over stdio, M6); outputs never contain it.
 
 ---
 
-## 7. Logging (L1–L6, B5, G8)
+## 7. Logging & Observability (L1–L6, B5, G8, O1–O4, N32)
 
 Uses **`logrus`** (`github.com/sirupsen/logrus`).
 
@@ -268,6 +290,41 @@ Uses **`logrus`** (`github.com/sirupsen/logrus`).
 - **B5 — banner format:** the banner text is
   `Starting {appName}/{appVersion} (commit: {appCommitHash}; built at {appTimestamp})`.
   The fields are the build metadata embedded at link time via ldflags (B2). The banner contains **no secrets** (S2).
+
+### 7.1 Metrics & Observability (O1–O4, N32)
+
+Because `mcp-forgejo` is **HYBRID** (§1), it is subject to the **Remote** observability
+requirements whenever it is launched in **HTTP/SSE** mode (O1/N32): it exposes an
+**internal observability endpoint** on a **separate listener**, distinct from the MCP
+listen address, so a reverse proxy forwards **only** the MCP transport (`HOST:PORT`)
+and never the observability one. Observability is **always enabled** for HTTP/SSE —
+there is **no opt-out flag** (N32). It is **not** started in stdio mode (stdio owns
+stdout and has no HTTP listener).
+
+- **Internal address (O4):** `INTERNAL_ADDR` (default **`:8081`**), configured via
+  `config.InternalAddr`. The MCP listen address is `HOST:PORT` (default `0.0.0.0:8080`),
+  configured via `config.Host`+`config.Port` — there is **no `LISTEN_ADDR`**; the MCP
+  listener is expressed as `HOST`+`PORT` in the code (see §3). Both ports are env-overridable.
+- **Endpoints (served by `observability.NewHandler()`, `observability/observability.go`):**
+  - `GET /metrics` — Prometheus metrics via `promhttp.Handler()` on the **default
+    registry**, which already includes the **standard Go collectors** — Go
+    runtime/memstats (`go_goroutines`, `go_gc_duration_seconds`, `go_memstats_*`,
+    …) **and net/http** (`promhttp_metric_handler_requests_total`, …) (O2).
+  - `GET /debug/pprof/` + `/debug/pprof/cmdline`, `/profile`, `/symbol`, `/trace` —
+    standard `net/http/pprof` profiling handlers.
+  - `GET /healthz` — liveness probe (always `200`).
+  - `GET /readyz` — readiness probe (always `200`).
+  - These are served on their **own `http.Server`**, entirely separate from the MCP
+    JSON-RPC/SSE flow (O1): metrics and probes are **never** part of the MCP tool surface.
+- **No upstream metrics (O3):** `mcp-forgejo` does **not** expose upstream Forgejo
+  response metrics (upstream latency / size / status-code histograms). O3 applies to
+  **proxying / passthrough** servers and is deliberately **not** implemented here; the
+  endpoint exposes only the **standard Go collectors** (O2). This SPEC therefore claims
+  **only** the standard Go metrics and makes **no** upstream-metrics claim.
+- **Wiring (O4/N32):** the observability listener is started in `cmd/mcp-forgejo/main.go`
+  only in the `http-sse` transport branch, alongside the MCP HTTP server, and shut down
+  gracefully on context cancellation (graceful 5 s shutdown in `observability.Run`). In
+  stdio mode it is never started.
 
 ---
 
@@ -286,6 +343,17 @@ The Go profile is enforced in CI (`.github/workflows/ci.yml`) and locally:
 | Secret scan (git history) | `gitleaks detect --source . --redact --verbose` over **full history** (`actions/checkout@v4` + `fetch-depth: 0`) — findings **fixed**, never suppressed; no `continue-on-error` | N28/C03 |
 | Architecture | `go-arch-lint check` (`.go-arch-lint.yml` authored) | C6 |
 | **Mutation testing** | `gremlins unleash . --threshold-efficacy=90 --threshold-mcover=80 --timeout-coefficient=60` | **C7/N15/N19 — HARD GATE, fails the build** (no `continue-on-error`; run from the module root `.`, not `./...`) |
+| **End-to-end tests** | `make e2e` ⇒ `go test -tags e2e ./...` (go-docker-testsuite harness) | **T2/C4/N30 — HARD GATE, fails the build** (dedicated CI job `e2e`, no `continue-on-error`) |
+
+> **e2e (T2, C4, C09GO, N30).** The e2e suite verifies the **full path between the MCP
+> tool handler and a real Forgejo backend**. It runs through the
+> **`github.com/teran/go-docker-testsuite`** harness (pulling `…/applications/forgejo
+> v1.6.0` to spin up a real Forgejo container) and is **build-tagged**
+> (`//go:build e2e` on every file in `e2e/`), so it is **excluded from the default unit
+> run** (`make test` / `go test ./...`). It is exposed via the **`make e2e`** target
+> (`go test -tags e2e ./...`) and runs in a **dedicated CI job** (`e2e` in
+> `.github/workflows/ci.yml`) that is a **hard gate** — a failing e2e test breaks CI
+> (C4; no `continue-on-error`). `make e2e` requires a running Docker daemon.
 
 > **Gremlins `--threshold-mcover` = 80 (goal reached).** The 80 goal is now met
 > by raising `--timeout-coefficient` to 60 per the previously-documented plan.
@@ -339,7 +407,8 @@ The following MUST / MUST NOT are satisfied by this SPEC and scaffold:
 - **M1** official SDK `github.com/modelcontextprotocol/go-sdk`; **M2** transport chosen & justified (§1); **M3** OAuth2 not used & justified (§2).
 - **M4** every tool described with title/annotations/instructions (§6); **M5** tools are complete use cases (§6).
 - **C1** coverage ≥ 95% gate (fails build); **C2** golangci-lint; **C3** `-race`; **C4** gosec; **C5** govulncheck; **C6** go-arch-lint authored + enforced; **C7** gremlins hard gate (§8).
-- **T1** TDD workflow referenced (§9).
+- **T1** TDD workflow referenced (§9); **T2/C4/N30** e2e build-tagged, run via `make e2e` in a dedicated CI hard-gate job (§8).
+- **O1** observability endpoint on a separate `:8081` (`INTERNAL_ADDR`) always present in HTTP/SSE mode, no opt-out; **O2** standard Go runtime/net-http collectors on `/metrics`; **O3** upstream metrics **not** claimed (not implemented); **O4** `HOST`+`PORT` (MCP listen) vs `INTERNAL_ADDR` (observability) — both env-overridable (**N32** satisfied, §7.1).
 - **S1** TLS never in-server; **S2** no secret leakage + redaction (centralized helpers, not per-field tags — S02); **S3** tools grouped read→write→delete; **S4** no local FS → `ALLOW_DIRS` omitted & explained; **S5** fix-don't-suppress; **S6** module path matches the public location (§5); **S9** control-character sanitization of free text (S09/N23, §5).
 - **A1** DDD/Clean architecture with layout, tool registry, transport wiring, config, error handling (§4); **X01** stateless state model with no local storage/migrations (§4.6).
 - **D1** README English; **D2** SPEC/AGENTS strictly English; **D3** README begins with the AI-Generated Content disclaimer; **D4** full badge set.
