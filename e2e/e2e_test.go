@@ -21,8 +21,8 @@ import (
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 
-	"github.com/teran/mcp-forgejo/internal/infrastructure/forgejo"
-	"github.com/teran/mcp-forgejo/internal/server"
+	"github.com/teran/mcp-forgejo/infrastructure/forgejo"
+	"github.com/teran/mcp-forgejo/server"
 
 	forgejoapp "github.com/teran/go-docker-testsuite/applications/forgejo"
 )

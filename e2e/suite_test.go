@@ -25,8 +25,8 @@ import (
 	"github.com/stretchr/testify/require"
 	"github.com/stretchr/testify/suite"
 
-	"github.com/teran/mcp-forgejo/internal/infrastructure/forgejo"
-	"github.com/teran/mcp-forgejo/internal/server"
+	"github.com/teran/mcp-forgejo/infrastructure/forgejo"
+	"github.com/teran/mcp-forgejo/server"
 )
 
 // Result shapes mirroring the JSON emitted by the MCP server. Only the fields

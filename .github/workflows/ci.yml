@@ -161,7 +161,7 @@ jobs:
       # production binary and has no fix (GO-2026-4887/GO-2026-4883, Fixed in N/A).
       # See SPEC.md §5 S5 policy.
       - name: Run govulncheck
-        run: govulncheck ./cmd/... ./internal/...
+        run: govulncheck ./cmd/... ./domain/... ./application/... ./infrastructure/... ./server/... ./config/... ./logging/... ./observability/...
 
   # ---- Dependency architecture (go-arch-lint) ----
   arch:

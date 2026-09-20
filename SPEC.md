@@ -36,7 +36,7 @@ OAuth2 would be warranted only if the server had to **delegate authorization to 
 
 ## 3. Configuration (A1)
 
-Configuration is loaded from the environment with [`kelseyhightower/envconfig`](https://github.com/kelseyhightower/envconfig) into a single `Config` struct (`internal/config`).
+Configuration is loaded from the environment with [`kelseyhightower/envconfig`](https://github.com/kelseyhightower/envconfig) into a single `Config` struct (`config`).
 
 | Env var          | Type       | Default            | Description |
 |------------------|------------|--------------------|-------------|
@@ -57,11 +57,11 @@ Configuration is loaded from the environment with [`kelseyhightower/envconfig`](
 The application is layered with Clean / DDD principles. The **composition root** wires concrete dependencies; the core depends on interfaces.
 
 > **Layout decision (A1):** this repository **intentionally uses a layered
-> `internal/` package layout** — `cmd/mcp-forgejo` (composition root) plus
-> `internal/{domain,application,infrastructure,server,config,logging}` — **by
+> top-level package layout** — `cmd/mcp-forgejo` (composition root) plus
+> `{domain,application,infrastructure,server,config,logging}` — **by
 > explicit project choice**. This is a deliberate decision recorded here (in
 > contrast to the skill's default **simple layout**, which is used only when no
-> layered `internal/` layout was requested). It is enforced by `go-arch-lint`
+> layered top-level layout was requested). It is enforced by `go-arch-lint`
 > (§4.5) and reflected in the package tree below; do not flatten it into a
 > single/`main`-only package without revisiting this decision.
 
@@ -71,21 +71,20 @@ The application is layered with Clean / DDD principles. The **composition root**
 cmd/mcp-forgejo/
   main.go                # composition root: load config, build logging, construct
                          # Forgejo client + tool registry, select transport driver, serve.
-internal/
-  domain/                # pure entities + interfaces (Repo, File, Issue, PullRequest,
+domain/                # pure entities + interfaces (Repo, File, Issue, PullRequest,
                          # Release, Organization, Comment, Branch, Commit). No deps.
-  application/           # use cases / tool handlers implementing domain interfaces.
-  infrastructure/
-    forgejo/             # Forgejo REST client (resty.dev/v3) implementing the domain
+application/           # use cases / tool handlers implementing domain interfaces.
+infrastructure/
+  forgejo/             # Forgejo REST client (resty.dev/v3) implementing the domain
                          # interfaces; auth header, pagination, error mapping.
-  server/                # MCP tool registry + transport drivers (stdio, http/sse).
-  config/                # envconfig Config struct + load/validate.
-  logging/               # logrus setup, sink per transport, redaction helpers.
+server/                # MCP tool registry + transport drivers (stdio, http/sse).
+config/                # envconfig Config struct + load/validate.
+logging/               # logrus setup, sink per transport, redaction helpers.
 ```
 
 ### 4.2 Tool registry
 
-The **tool registry** (`internal/server`) is a single map of tool name → `Tool` where each `Tool` carries:
+The **tool registry** (`server`) is a single map of tool name → `Tool` where each `Tool` carries:
 
 - the **metadata** (title, annotations, per-tool instructions, input/output JSON Schema — see §6),
 - a **handler** function that invokes the corresponding **application use case**,
@@ -97,14 +96,14 @@ At startup the registry is populated once, then bound to the MCP SDK `Server` (v
 
 Transport selection happens at startup, in the composition root:
 
-- **stdio driver** (`internal/server/stdio.go`) — connects the SDK server to `os.Stdin`/`os.Stdout`. Logging sink = **file** (`LOG_FILENAME`, chmod 600).
-- **http/sse driver** (`internal/server/http.go`) — serves the MCP HTTP/SSE endpoint on `HOST:PORT`. Logging sink = **stdout** (12-factor).
+- **stdio driver** (`server/stdio.go`) — connects the SDK server to `os.Stdin`/`os.Stdout`. Logging sink = **file** (`LOG_FILENAME`, chmod 600).
+- **http/sse driver** (`server/http.go`) — serves the MCP HTTP/SSE endpoint on `HOST:PORT`. Logging sink = **stdout** (12-factor).
 
 A single launch-mode flag selects the driver (e.g. `--transport=stdio|http-sse`, defaulting sensibly per how it is launched). Both drivers share the same `Server` construction, tools, and application layer.
 
 ### 4.4 Error handling (taxonomy → MCP error codes)
 
-Forgejo responses are mapped to a small error taxonomy in `internal/infrastructure/forgejo`, then to MCP error codes:
+Forgejo responses are mapped to a small error taxonomy in `infrastructure/forgejo`, then to MCP error codes:
 
 | Taxonomy            | Trigger (Forgejo HTTP)                       | MCP error code / handling |
 |---------------------|----------------------------------------------|---------------------------|
@@ -120,7 +119,7 @@ Errors are **logged** at an appropriate level (transient at warn, others at info
 
 `go-arch-lint` enforces the edges in `.go-arch-lint.yml`:
 
-- `cmd` → any `internal/*` (composition root).
+- `cmd` → any top-level package (composition root).
 - `domain` → nothing (pure core).
 - `application` → `domain` only.
 - `infrastructure` → `domain` only.
@@ -147,11 +146,11 @@ Because the server is stateless, scaling (e.g. multiple HTTP/SSE replicas behind
 
 - **S1 / N1 — TLS never in-server.** TLS is **NEVER implemented inside the server** for the HTTP/SSE transport. The HTTP/SSE listener serves plain HTTP; TLS termination is always the **reverse proxy's** job (nginx / Caddy / ingress) in front of the container. No in-server TLS code, certificates, or key handling exists or is planned.
 - **S2 / N2 — data hygiene / redaction.** The `FORGEJO_TOKEN` (and any credentials/passwords) are **never** echoed in logs, tool outputs, error messages, or debug dumps. The PAT is read into config once and used only as the outbound `Authorization: token <PAT>` header. Tool output contracts contain no token field; any server string that could embed credentials is redacted by a shared helper before being returned or logged.
-  - **Redaction is centralized in helpers, not per-field tags (S02).** Because no API response or request struct carries a token field (the PAT is only ever an outbound header, never deserialized into a struct), redaction is **not** implemented via per-field `secret:"true"`-style struct tags. Instead it is centralized in two shared helpers that every logging/error path funnels through: `domain.Redact(s, secret)` (scrubs a string against the PAT before it is surfaced in an error or log) and `redactArgs(raw)` (in `internal/server/session.go`, which replaces sensitive tool-call argument keys — `token`, `password`, `passwd`, `secret`, `apikey`, `access_key`, `private_key`, `authorization`, `cookie`, `pat` — with `[REDACTED]` before logging, matched case-insensitively). The single `FORGEJO_TOKEN` config field therefore does not need a redaction tag (and envconfig ignores struct tags anyway); the helpers are the single source of truth for data hygiene.
-- **S9 / N23 — control-character sanitization of free text.** Tool results that return **free-form text** captured from Forgejo (`forgejo_diff_get`/`forgejo_pull_diff` → `Diff.Text`, and `forgejo_file_get` → `File.Content`) are passed through `stripControl` (in `internal/infrastructure/forgejo/forgejo.go`) before being returned. `stripControl` removes ANSI escape sequences and C0 control characters (preserving the structural whitespace `\n`, `\t`, `\r`) so that a client rendering the text verbatim cannot be driven by terminal-control injection embedded in upstream content (S09/N23).
+  - **Redaction is centralized in helpers, not per-field tags (S02).** Because no API response or request struct carries a token field (the PAT is only ever an outbound header, never deserialized into a struct), redaction is **not** implemented via per-field `secret:"true"`-style struct tags. Instead it is centralized in two shared helpers that every logging/error path funnels through: `domain.Redact(s, secret)` (scrubs a string against the PAT before it is surfaced in an error or log) and `redactArgs(raw)` (in `server/session.go`, which replaces sensitive tool-call argument keys — `token`, `password`, `passwd`, `secret`, `apikey`, `access_key`, `private_key`, `authorization`, `cookie`, `pat` — with `[REDACTED]` before logging, matched case-insensitively). The single `FORGEJO_TOKEN` config field therefore does not need a redaction tag (and envconfig ignores struct tags anyway); the helpers are the single source of truth for data hygiene.
+- **S9 / N23 — control-character sanitization of free text.** Tool results that return **free-form text** captured from Forgejo (`forgejo_diff_get`/`forgejo_pull_diff` → `Diff.Text`, and `forgejo_file_get` → `File.Content`) are passed through `stripControl` (in `infrastructure/forgejo/forgejo.go`) before being returned. `stripControl` removes ANSI escape sequences and C0 control characters (preserving the structural whitespace `\n`, `\t`, `\r`) so that a client rendering the text verbatim cannot be driven by terminal-control injection embedded in upstream content (S09/N23).
 - **S3 — tool priority order.** Tools are grouped and registered **read → write/update → delete** (see §6).
 - **S4 — no local filesystem access.** The server does not touch the local filesystem; it only talks to the remote Forgejo API over HTTP. Consequently **`ALLOW_DIRS` is not required and is omitted** from config (see §3). There is no local path to scope, so N3 is vacuous by design.
-- **S5 / N8 — fix, don't suppress.** gosec and govulncheck findings are **fixed**, never suppressed via blanket exclusions or default `#nosec`. Findings block the build (C4/C5). Where a finding **cannot** be fixed — e.g. a **test-only** dependency that is not linked into the production binary and has no upstream fix — it is excluded by **scoping the scan to production packages** (`govulncheck ./cmd/... ./internal/...`) rather than suppressing the finding, and the exclusion is documented here with its justification. Current justified exclusion: the e2e suite depends on `github.com/docker/docker` (pulled transitively via `go-docker-testsuite`) to run a real Forgejo container; it is **not** part of the release binary (`go list -deps ./cmd/mcp-forgejo` contains no `docker/*`), and the two findings (GO-2026-4887, GO-2026-4883) have **Fixed in: N/A**.
+- **S5 / N8 — fix, don't suppress.** gosec and govulncheck findings are **fixed**, never suppressed via blanket exclusions or default `#nosec`. Findings block the build (C4/C5). Where a finding **cannot** be fixed — e.g. a **test-only** dependency that is not linked into the production binary and has no upstream fix — it is excluded by **scoping the scan to production packages** (`govulncheck ./cmd/... ./domain/... ./application/... ./infrastructure/... ./server/... ./config/... ./logging/... ./observability/...`) rather than suppressing the finding, and the exclusion is documented here with its justification. Current justified exclusion: the e2e suite depends on `github.com/docker/docker` (pulled transitively via `go-docker-testsuite`) to run a real Forgejo container; it is **not** part of the release binary (`go list -deps ./cmd/mcp-forgejo` contains no `docker/*`), and the two findings (GO-2026-4887, GO-2026-4883) have **Fixed in: N/A**.
 - **S6 / N20 — module path matches the public location.** The module/package name `github.com/teran/mcp-forgejo` matches the canonical public repository location and must be kept in sync with it. It is not a placeholder.
 - **S7 — reverse-proxy authn/authz for HTTP/SSE.** The MCP HTTP/SSE layer offers **no authentication of its own**: the server holds the PAT in its environment and uses it to call Forgejo, but any client that can reach `HOST:PORT` can drive every tool with the operator's privileges — including destructive ones (`forgejo_repo_delete`, `forgejo_pull_merge`, …). For any HTTP/SSE deployment the listener **MUST** sit behind a reverse proxy that enforces client authentication/authorization (e.g. mTLS, OIDC, network ACL, or a proxy token) before requests reach the server. Additionally, run the PAT under a **dedicated low-privilege Forgejo user** scoped to only the operations the team actually needs. In **stdio** mode the client is trusted by construction (the local process that spawned the server), so this does not apply.
 
@@ -283,7 +282,7 @@ The Go profile is enforced in CI (`.github/workflows/ci.yml`) and locally:
 | Race detector | `go test -race ./...` | C3 |
 | Lint + format | `golangci-lint run ./...` (gofmt/gofumpt) | C2 |
 | Static security | `gosec ./...` — findings **fixed** | C4/N8 |
-| Vuln audit | `govulncheck ./cmd/... ./internal/...` — prod findings **fixed**; test-only deps with no fix excluded (see S5) | C5/N8 |
+| Vuln audit | `govulncheck ./cmd/... ./domain/... ./application/... ./infrastructure/... ./server/... ./config/... ./logging/... ./observability/...` — prod findings **fixed**; test-only deps with no fix excluded (see S5) | C5/N8 |
 | Secret scan (git history) | `gitleaks detect --source . --redact --verbose` over **full history** (`actions/checkout@v4` + `fetch-depth: 0`) — findings **fixed**, never suppressed; no `continue-on-error` | N28/C03 |
 | Architecture | `go-arch-lint check` (`.go-arch-lint.yml` authored) | C6 |
 | **Mutation testing** | `gremlins unleash . --threshold-efficacy=90 --threshold-mcover=80 --timeout-coefficient=60` | **C7/N15/N19 — HARD GATE, fails the build** (no `continue-on-error`; run from the module root `.`, not `./...`) |
