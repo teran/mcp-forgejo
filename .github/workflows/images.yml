@@ -58,6 +58,9 @@ jobs:
           # join with comma
           IFS=, ; echo "tags=${TAGS[*]}" >> "$GITHUB_OUTPUT"
 
+      - name: Install goreleaser
+        uses: goreleaser/goreleaser-action@v6
+
       - name: Build binary + image (make container-image)
         # Binds to the build-system interface (R07/N31). `make container-image`
         # runs `goreleaser build --snapshot --clean --single-target --output
