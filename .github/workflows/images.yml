@@ -59,7 +59,11 @@ jobs:
           IFS=, ; echo "tags=${TAGS[*]}" >> "$GITHUB_OUTPUT"
 
       - name: Install goreleaser
-        uses: goreleaser/goreleaser-action@v6
+        # goreleaser-action@v6 requires a non-empty `args` input, so we install
+        # goreleaser directly (it is invoked later by `make container-image`).
+        run: |
+          go install github.com/goreleaser/goreleaser@latest
+          echo "$(go env GOPATH)/bin" >> "$GITHUB_PATH"
 
       - name: Build binary + image (make container-image)
         # Binds to the build-system interface (R07/N31). `make container-image`
