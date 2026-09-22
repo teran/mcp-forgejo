@@ -12,6 +12,7 @@ import (
 	"github.com/sirupsen/logrus"
 
 	"github.com/teran/mcp-forgejo/config"
+	"github.com/teran/mcp-forgejo/domain"
 	"github.com/teran/mcp-forgejo/infrastructure/forgejo"
 )
 
@@ -48,11 +49,11 @@ func TestRunLoggingError(t *testing.T) {
 
 func TestRunBuildError(t *testing.T) {
 	setBaseEnv(t)
-	orig := buildServer
-	buildServer = func(forgejo.Config, *logrus.Logger) (*mcp.Server, error) {
+	orig := buildServerWithObserver
+	buildServerWithObserver = func(forgejo.Config, *logrus.Logger, domain.UpstreamObserver) (*mcp.Server, error) {
 		return nil, errors.New("build failed")
 	}
-	defer func() { buildServer = orig }()
+	defer func() { buildServerWithObserver = orig }()
 
 	if code := run([]string{"--transport", "stdio"}); code == 0 {
 		t.Fatal("expected non-zero exit code for build error")
@@ -223,16 +224,16 @@ func TestRunPassesLoggerToBuildWhenEnabled(t *testing.T) {
 	setBaseEnv(t)
 	t.Setenv("LOG_LEVEL", "info")
 
-	origBuild := buildServer
+	origBuild := buildServerWithObserver
 	origRun := runStdio
 	var gotLogger *logrus.Logger
-	buildServer = func(_ forgejo.Config, log *logrus.Logger) (*mcp.Server, error) {
+	buildServerWithObserver = func(_ forgejo.Config, log *logrus.Logger, _ domain.UpstreamObserver) (*mcp.Server, error) {
 		gotLogger = log
 		return &mcp.Server{}, nil
 	}
 	runStdio = func(context.Context, *mcp.Server) error { return nil }
 	defer func() {
-		buildServer = origBuild
+		buildServerWithObserver = origBuild
 		runStdio = origRun
 	}()
 
@@ -257,16 +258,16 @@ func TestRunPassesLoggerToBuildWhenDisabled(t *testing.T) {
 	setBaseEnv(t)
 	t.Setenv("LOG_LEVEL", "")
 
-	origBuild := buildServer
+	origBuild := buildServerWithObserver
 	origRun := runStdio
 	var gotLogger *logrus.Logger
-	buildServer = func(_ forgejo.Config, log *logrus.Logger) (*mcp.Server, error) {
+	buildServerWithObserver = func(_ forgejo.Config, log *logrus.Logger, _ domain.UpstreamObserver) (*mcp.Server, error) {
 		gotLogger = log
 		return &mcp.Server{}, nil
 	}
 	runStdio = func(context.Context, *mcp.Server) error { return nil }
 	defer func() {
-		buildServer = origBuild
+		buildServerWithObserver = origBuild
 		runStdio = origRun
 	}()
 

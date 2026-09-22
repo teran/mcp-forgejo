@@ -316,11 +316,18 @@ stdout and has no HTTP listener).
   - `GET /readyz` — readiness probe (always `200`).
   - These are served on their **own `http.Server`**, entirely separate from the MCP
     JSON-RPC/SSE flow (O1): metrics and probes are **never** part of the MCP tool surface.
-- **No upstream metrics (O3):** `mcp-forgejo` does **not** expose upstream Forgejo
-  response metrics (upstream latency / size / status-code histograms). O3 applies to
-  **proxying / passthrough** servers and is deliberately **not** implemented here; the
-  endpoint exposes only the **standard Go collectors** (O2). This SPEC therefore claims
-  **only** the standard Go metrics and makes **no** upstream-metrics claim.
+- **Upstream metrics (O3):** `mcp-forgejo` exposes upstream Forgejo response metrics
+  on `/metrics` (alongside the standard Go collectors, O2). The `UpstreamCollector`
+  (`observability/upstream.go`) is registered on the default registry and observed
+  once per outbound Forgejo request by the infrastructure client (`Client.observer`,
+  O03), exposing the four metrics:
+  - `forgejo_upstream_request_duration_seconds` — histogram of request duration in seconds;
+  - `forgejo_upstream_request_total` — counter labeled `{method,status}` (status = numeric
+    HTTP status as string; `0` on transport error);
+  - `forgejo_upstream_request_size_bytes` — histogram of request body size;
+  - `forgejo_upstream_response_size_bytes` — histogram of response body size.
+  The observer is wired from the composition root (`cmd/mcp-forgejo/main.go`) via
+  `server.BuildWithObserver`.
 - **Wiring (O4/N32):** the observability listener is started in `cmd/mcp-forgejo/main.go`
   only in the `http-sse` transport branch, alongside the MCP HTTP server, and shut down
   gracefully on context cancellation (graceful 5 s shutdown in `observability.Run`). In
@@ -408,7 +415,7 @@ The following MUST / MUST NOT are satisfied by this SPEC and scaffold:
 - **M4** every tool described with title/annotations/instructions (§6); **M5** tools are complete use cases (§6).
 - **C1** coverage ≥ 95% gate (fails build); **C2** golangci-lint; **C3** `-race`; **C4** gosec; **C5** govulncheck; **C6** go-arch-lint authored + enforced; **C7** gremlins hard gate (§8).
 - **T1** TDD workflow referenced (§9); **T2/C4/N30** e2e build-tagged, run via `make e2e` in a dedicated CI hard-gate job (§8).
-- **O1** observability endpoint on a separate `:8081` (`INTERNAL_ADDR`) always present in HTTP/SSE mode, no opt-out; **O2** standard Go runtime/net-http collectors on `/metrics`; **O3** upstream metrics **not** claimed (not implemented); **O4** `HOST`+`PORT` (MCP listen) vs `INTERNAL_ADDR` (observability) — both env-overridable (**N32** satisfied, §7.1).
+- **O1** observability endpoint on a separate `:8081` (`INTERNAL_ADDR`) always present in HTTP/SSE mode, no opt-out; **O2** standard Go runtime/net-http collectors on `/metrics`; **O3** upstream metrics claimed (four `forgejo_upstream_*` metrics on `/metrics`, observed per outbound request, §7.1); **O4** `HOST`+`PORT` (MCP listen) vs `INTERNAL_ADDR` (observability) — both env-overridable (**N32** satisfied, §7.1).
 - **S1** TLS never in-server; **S2** no secret leakage + redaction (centralized helpers, not per-field tags — S02); **S3** tools grouped read→write→delete; **S4** no local FS → `ALLOW_DIRS` omitted & explained; **S5** fix-don't-suppress; **S6** module path matches the public location (§5); **S9** control-character sanitization of free text (S09/N23, §5).
 - **A1** DDD/Clean architecture with layout, tool registry, transport wiring, config, error handling (§4); **X01** stateless state model with no local storage/migrations (§4.6).
 - **D1** README English; **D2** SPEC/AGENTS strictly English; **D3** README begins with the AI-Generated Content disclaimer; **D4** full badge set.

@@ -41,9 +41,15 @@ func startupBanner() string {
 // These variables are the seams that let tests replace the real server build
 // and transport runners without spawning blocking servers.
 var (
-	buildServer   = server.BuildWithLogger
-	runStdio      = server.RunStdio
-	runHTTPServer = func(_ context.Context, cfg config.Config, s *mcp.Server) error {
+	// buildServerWithObserver is the seam that lets tests replace the real
+	// server build. It wires an UpstreamObserver (O03) into the server so the
+	// Forgejo client emits upstream metrics. upstreamObserver is created once at
+	// package init (it registers on the default registry, which /metrics reads)
+	// and is reused across run() calls to avoid re-registering the collectors.
+	buildServerWithObserver = server.BuildWithObserver
+	upstreamObserver        = observability.NewUpstreamCollector()
+	runStdio                = server.RunStdio
+	runHTTPServer           = func(_ context.Context, cfg config.Config, s *mcp.Server) error {
 		httpSrv := &http.Server{
 			Addr:              cfg.Host + ":" + cfg.Port,
 			Handler:           server.NewHTTPHandler(s),
@@ -104,7 +110,7 @@ func run(args []string) int {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 
-	s, err := buildServer(forgejo.Config{BaseURL: cfg.ForgejoURL, Token: cfg.ForgejoToken}, logger)
+	s, err := buildServerWithObserver(forgejo.Config{BaseURL: cfg.ForgejoURL, Token: cfg.ForgejoToken}, logger, upstreamObserver)
 	if err != nil {
 		logger.WithError(err).Error("failed to build server")
 		return 1

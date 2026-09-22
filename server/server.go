@@ -37,8 +37,19 @@ func Build(cfg forgejo.Config) (*mcp.Server, error) {
 // logging) and attaches the logger to the Forgejo client for upstream request
 // logging. A nil logger disables all of this while keeping the same behaviour.
 func BuildWithLogger(cfg forgejo.Config, log *logrus.Logger) (*mcp.Server, error) {
+	return BuildWithObserver(cfg, log, nil)
+}
+
+// BuildWithObserver constructs an *mcp.Server like BuildWithLogger but
+// additionally attaches an UpstreamObserver to the Forgejo client so every
+// outbound request emits one upstream metrics observation (O03). A nil observer
+// is a no-op.
+func BuildWithObserver(cfg forgejo.Config, log *logrus.Logger, obs domain.UpstreamObserver) (*mcp.Server, error) {
 	client := forgejo.New(cfg)
 	client.SetLogger(log)
+	if obs != nil {
+		client.SetObserver(obs)
+	}
 
 	opts := &mcp.ServerOptions{}
 	if log != nil {

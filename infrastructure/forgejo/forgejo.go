@@ -42,15 +42,38 @@ type Config struct {
 
 // Client is a minimal Forgejo REST client implementing the domain services.
 type Client struct {
-	resty *resty.Client
-	token string `secret:"true"`
-	log   *logrus.Logger
+	resty    *resty.Client
+	token    string `secret:"true"`
+	log      *logrus.Logger
+	observer domain.UpstreamObserver
 }
 
 // SetLogger attaches a logrus logger to the client for upstream request
 // logging (L7). A nil logger disables upstream logging (no-op).
 func (c *Client) SetLogger(l *logrus.Logger) {
 	c.log = l
+}
+
+// SetObserver attaches an UpstreamObserver to the client so every outbound
+// Forgejo request emits one observation for metrics (O03). A nil observer is a
+// no-op.
+func (c *Client) SetObserver(o domain.UpstreamObserver) {
+	c.observer = o
+}
+
+// observe emits a single observation for a completed outbound Forgejo request.
+// It is a no-op when no observer is configured (O03).
+func (c *Client) observe(method string, status int, inBytes, outBytes int64, duration time.Duration) {
+	if c.observer == nil {
+		return
+	}
+	c.observer.ObserveUpstream(domain.UpstreamObservation{
+		Method:   method,
+		Status:   status,
+		InBytes:  inBytes,
+		OutBytes: outBytes,
+		Duration: duration,
+	})
 }
 
 // logUpstream emits a single Debug line describing an upstream Forgejo request
@@ -566,7 +589,11 @@ func (c *Client) IsPullRequestMerged(ctx context.Context, owner, repo string, in
 	path := fmt.Sprintf("/api/v1/repos/%s/%s/pulls/%s/merge", pathEscape(owner), pathEscape(repo), strconv.FormatInt(index, 10))
 	req := c.resty.R().SetContext(ctx).SetResponseBodyUnlimitedReads(true)
 	req = c.applyAuth(req, ctx)
+	start := time.Now()
 	resp, err := req.Execute(http.MethodGet, path)
+	status, outBytes := observeStatus(resp)
+	duration := time.Since(start)
+	c.observe(http.MethodGet, status, 0, outBytes, duration)
 	if err != nil {
 		return false, domain.NewForgejoError(domain.KindTransient, domain.Redact(fmt.Sprintf("request failed: %v", err), c.token))
 	}
@@ -664,7 +691,9 @@ func (c *Client) UploadReleaseAsset(ctx context.Context, owner, repo string, rel
 
 	start := time.Now()
 	resp, err := req.Execute(http.MethodPost, path)
-	c.logUpstream(ctx, http.MethodPost, path, int64(len(content)), int64(len(resp.Bytes())), resp.StatusCode(), time.Since(start))
+	status, outBytes := observeStatus(resp)
+	c.logUpstream(ctx, http.MethodPost, path, int64(len(content)), outBytes, status, time.Since(start))
+	c.observe(http.MethodPost, status, int64(len(content)), outBytes, time.Since(start))
 	if err != nil {
 		return domain.ReleaseAsset{}, domain.NewForgejoError(domain.KindTransient, domain.Redact(fmt.Sprintf("request failed: %v", err), c.token))
 	}
@@ -1174,7 +1203,9 @@ func (c *Client) do(ctx context.Context, method, path string, query url.Values, 
 	inBytes := requestBodyBytes(req.Body)
 	start := time.Now()
 	resp, err := req.Execute(method, path)
-	c.logUpstream(ctx, method, path, inBytes, int64(len(resp.Bytes())), resp.StatusCode(), time.Since(start))
+	status, outBytes := observeStatus(resp)
+	c.logUpstream(ctx, method, path, inBytes, outBytes, status, time.Since(start))
+	c.observe(method, status, inBytes, outBytes, time.Since(start))
 	if err != nil {
 		return domain.NewForgejoError(domain.KindTransient, domain.Redact(fmt.Sprintf("request failed: %v", err), c.token))
 	}
@@ -1218,7 +1249,9 @@ func (c *Client) doJSON(ctx context.Context, method, path string, body, out any)
 	inBytes := requestBodyBytes(req.Body)
 	start := time.Now()
 	resp, err := req.Execute(method, path)
-	c.logUpstream(ctx, method, path, inBytes, int64(len(resp.Bytes())), resp.StatusCode(), time.Since(start))
+	status, outBytes := observeStatus(resp)
+	c.logUpstream(ctx, method, path, inBytes, outBytes, status, time.Since(start))
+	c.observe(method, status, inBytes, outBytes, time.Since(start))
 	if err != nil {
 		return domain.NewForgejoError(domain.KindTransient, domain.Redact(fmt.Sprintf("request failed: %v", err), c.token))
 	}
@@ -1254,7 +1287,9 @@ func (c *Client) doText(ctx context.Context, method, path string, query url.Valu
 	inBytes := requestBodyBytes(req.Body)
 	start := time.Now()
 	resp, err := req.Execute(method, path)
-	c.logUpstream(ctx, method, path, inBytes, int64(len(resp.Bytes())), resp.StatusCode(), time.Since(start))
+	status, outBytes := observeStatus(resp)
+	c.logUpstream(ctx, method, path, inBytes, outBytes, status, time.Since(start))
+	c.observe(method, status, inBytes, outBytes, time.Since(start))
 	if err != nil {
 		return "", domain.NewForgejoError(domain.KindTransient, domain.Redact(fmt.Sprintf("request failed: %v", err), c.token))
 	}
@@ -1263,6 +1298,16 @@ func (c *Client) doText(ctx context.Context, method, path string, query url.Valu
 		return "", mapStatusError(resp.StatusCode(), string(resp.Bytes()), c.token)
 	}
 	return string(resp.Bytes()), nil
+}
+
+// observeStatus returns the HTTP status and response body size of a completed
+// request, guarding against a nil *resty.Response on transport error (where the
+// observation must record Status 0 and OutBytes 0 without dereferencing resp).
+func observeStatus(resp *resty.Response) (status int, outBytes int64) {
+	if resp == nil {
+		return 0, 0
+	}
+	return resp.StatusCode(), int64(len(resp.Bytes()))
 }
 
 // requestBodyBytes returns an approximate byte length of a resty request body.
