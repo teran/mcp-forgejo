@@ -4,9 +4,13 @@ import (
 	"context"
 	"errors"
 	"io"
+	"net"
+	"net/http"
 	"os"
+	"strconv"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 	"github.com/sirupsen/logrus"
@@ -417,5 +421,116 @@ func TestBuildMetadataDefaults(t *testing.T) {
 	}
 	if appTimestamp != "unknown" {
 		t.Errorf("appTimestamp = %q, want %q", appTimestamp, "unknown")
+	}
+}
+
+// freePort reserves an ephemeral localhost TCP port and returns it as a
+// "host:port" string. The listener is closed before returning, so the returned
+// address is free for the server under test to bind.
+func freePort(t *testing.T) string {
+	t.Helper()
+	l, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatalf("reserve port: %v", err)
+	}
+	defer func() { _ = l.Close() }()
+	return l.Addr().String()
+}
+
+// waitForHTTP polls the given address until it accepts an HTTP connection
+// (any status code is accepted — the MCP handler is only served, not
+// exercised) or the deadline passes, returning true if a connection succeeded.
+func waitForHTTP(addr string) bool {
+	client := &http.Client{Timeout: 200 * time.Millisecond}
+	deadline := time.Now().Add(5 * time.Second)
+	for time.Now().Before(deadline) {
+		resp, err := client.Get("http://" + addr + "/")
+		if err == nil {
+			_ = resp.Body.Close()
+			return true
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	return false
+}
+
+// TestRunHTTPServerShutsDownGracefully exercises the REAL default runHTTPServer
+// closure (captured from the package var, not a test stub) and verifies that it
+// returns nil promptly once the context is cancelled. This mirrors the
+// observability server's graceful shutdown behaviour and is RED before the fix
+// because the current closure ignores ctx and blocks in ListenAndServe forever.
+func TestRunHTTPServerShutsDownGracefully(t *testing.T) {
+	addr := freePort(t)
+	host, portStr, err := net.SplitHostPort(addr)
+	if err != nil {
+		t.Fatalf("SplitHostPort(%q): %v", addr, err)
+	}
+	if _, err := strconv.Atoi(portStr); err != nil {
+		t.Fatalf("Atoi(%q): %v", portStr, err)
+	}
+	cfg := config.Config{Host: host, Port: portStr}
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	errCh := make(chan error, 1)
+	go func() { errCh <- runHTTPServer(ctx, cfg, &mcp.Server{}) }()
+
+	if !waitForHTTP(addr) {
+		t.Fatalf("HTTP server at %s never accepted a connection", addr)
+	}
+
+	cancel()
+
+	select {
+	case err := <-errCh:
+		if err != nil {
+			t.Fatalf("runHTTPServer returned error after graceful shutdown: %v", err)
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("runHTTPServer did not return after context cancellation")
+	}
+}
+
+// TestRunHTTPServerDoesNotReturnBeforeCancel verifies the HTTP server keeps
+// running (blocks) until the context is cancelled, and only then returns nil.
+// The first phase proves the old blocking behaviour would be caught: before the
+// fix the closure never returns at all, so this test's first select still
+// passes but the shutdown phase after cancel() fails.
+func TestRunHTTPServerDoesNotReturnBeforeCancel(t *testing.T) {
+	addr := freePort(t)
+	host, portStr, err := net.SplitHostPort(addr)
+	if err != nil {
+		t.Fatalf("SplitHostPort(%q): %v", addr, err)
+	}
+	cfg := config.Config{Host: host, Port: portStr}
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	errCh := make(chan error, 1)
+	go func() { errCh <- runHTTPServer(ctx, cfg, &mcp.Server{}) }()
+
+	if !waitForHTTP(addr) {
+		t.Fatalf("HTTP server at %s never accepted a connection", addr)
+	}
+
+	// Before cancellation the server must keep running (blocking).
+	select {
+	case err := <-errCh:
+		t.Fatalf("runHTTPServer returned before context cancellation: %v", err)
+	case <-time.After(200 * time.Millisecond):
+		// expected: still blocking
+	}
+
+	cancel()
+
+	select {
+	case err := <-errCh:
+		if err != nil {
+			t.Fatalf("runHTTPServer returned error after graceful shutdown: %v", err)
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("runHTTPServer did not return after context cancellation")
 	}
 }
