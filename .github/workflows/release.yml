@@ -34,7 +34,7 @@ jobs:
 
       - uses: actions/setup-go@v5
         with:
-          go-version: "1.27"   # keep in sync with go.mod (1.27.0) and ci.yml
+          go-version: "1.27"   # keep in sync with go.mod (1.27.1) and ci.yml
           cache: true
 
       - name: Run GoReleaser

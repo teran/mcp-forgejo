@@ -20,7 +20,7 @@ instance over HTTP; it **never touches the local filesystem** (so there is **no
 
 ## Hard facts you must not change
 
-- **Language:** Go **1.27.0** (`go.mod` `go 1.27.0`; `GO_VERSION: "1.27"` in CI).
+- **Language:** Go **1.27.1** (`go.mod` `go 1.27.1`; `GO_VERSION: "1.27"` in CI).
 - **Module path:** `github.com/teran/mcp-forgejo` (matches the canonical public
   repository location). Keep it in sync with the repository.
 - **SDK:** `github.com/modelcontextprotocol/go-sdk` (official; never hand-roll).
