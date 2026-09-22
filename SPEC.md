@@ -45,7 +45,7 @@ Configuration is loaded from the environment with [`kelseyhightower/envconfig`](
 | `HOST`           | `string`   | `0.0.0.0`          | Listen host for the HTTP/SSE MCP transport. |
 | `PORT`           | `string`   | `8080`             | Listen port for the HTTP/SSE MCP transport. The MCP listen address is `HOST:PORT` (there is **no** `LISTEN_ADDR`; the listener is configured through `HOST`+`PORT`, see §7.1). |
 | `INTERNAL_ADDR`  | `string`   | `:8081`            | **Internal observability address** — a separate listener for `/metrics`, `/debug/pprof/*`, `/healthz`, `/readyz`, distinct from the MCP listen address (O1/O4/N32). Only started in HTTP/SSE mode (see §7.1). |
-| `LOG_LEVEL`      | `string`   | (unset)            | Logging level (`trace`, `debug`, `info`, `warn`, `error`). **Unset ⇒ logging disabled** (L2). |
+| `LOG_LEVEL`      | `string`   | (unset)            | Logging level (`trace`, `debug`, `info`, `warn`, `error`). **Mode-dependent (L2):** HTTP/SSE mode always logs, defaulting to `info` when unset; stdio mode logs **only when set** — unset ⇒ disabled. |
 | `LOG_FILENAME`   | `string`   | `/tmp/mcp-forgejo.log` | Log file path for the **stdio** transport (chmod **600**). Ignored for HTTP/SSE (L1, L3). |
 | `LOG_FORMAT`     | `string`   | `text`             | `text` (logrus text, full absolute timestamp) or `json` (L4). |
 
@@ -282,11 +282,11 @@ All delete tools are **destructive** (S12 / HITL) and **not idempotent** (deleti
 Uses **`logrus`** (`github.com/sirupsen/logrus`).
 
 - **L1 — channel per transport:** HTTP/SSE → **stdout** (12-factor); stdio → **file** (default `/tmp/mcp-forgejo.log`, **chmod 600**), **never** stdout (stdout is the MCP protocol channel).
-- **L2 — disabled by default:** logging is enabled only when `LOG_LEVEL` is set; unset ⇒ no logs.
+- **L2 — mode-dependent enablement (M6):** in **HTTP/SSE** mode (`--transport=http-sse`) logging is **always enabled**, default level **`info`** (overridable via `LOG_LEVEL`). In **stdio** mode (default) logging is **enabled only when `LOG_LEVEL` is set** — unset ⇒ no logs.
 - **L3 — override path:** `LOG_FILENAME` (default `/tmp/mcp-forgejo.log`).
 - **L4 — format:** default `text` (logrus text, **full absolute timestamp**); `LOG_FORMAT=json` → JSON.
 - **L5 / S2 / N2 — no secrets:** `FORGEJO_TOKEN` and any credentials/passwords are **never** logged; redaction helpers strip them from any log line or error before emission.
-- **L6 / B5 — startup banner:** when logging is enabled (i.e. `LOG_LEVEL` is set, L2), the **startup banner** is emitted as the **first line** of the logging channel for the selected transport — the **file** for stdio, **stdout** for HTTP/SSE (consistent with L1). The banner advertises the running build and is written exactly once, at startup, before any other log line.
+- **L6 / B5 — startup banner:** when logging is enabled (always in HTTP/SSE mode — default `info`; in stdio only when `LOG_LEVEL` is set, L2), the **startup banner** is emitted as the **first line** of the logging channel for the selected transport — the **file** for stdio, **stdout** for HTTP/SSE (consistent with L1). The banner advertises the running build and is written exactly once, at startup, before any other log line.
 - **B5 — banner format:** the banner text is
   `Starting {appName}/{appVersion} (commit: {appCommitHash}; built at {appTimestamp})`.
   The fields are the build metadata embedded at link time via ldflags (B2). The banner contains **no secrets** (S2).
@@ -419,7 +419,7 @@ The following MUST / MUST NOT are satisfied by this SPEC and scaffold:
 - **S1** TLS never in-server; **S2** no secret leakage + redaction (centralized helpers, not per-field tags — S02); **S3** tools grouped read→write→delete; **S4** no local FS → `ALLOW_DIRS` omitted & explained; **S5** fix-don't-suppress; **S6** module path matches the public location (§5); **S9** control-character sanitization of free text (S09/N23, §5).
 - **A1** DDD/Clean architecture with layout, tool registry, transport wiring, config, error handling (§4); **X01** stateless state model with no local storage/migrations (§4.6).
 - **D1** README English; **D2** SPEC/AGENTS strictly English; **D3** README begins with the AI-Generated Content disclaimer; **D4** full badge set.
-- **L1–L5** logging channel per transport, `LOG_LEVEL`-gated, `LOG_FILENAME`/`LOG_FORMAT` (§7); **L6** startup banner first line per transport.
+- **L1–L5** logging channel per transport, mode-dependent enablement (HTTP always on at `info`; stdio `LOG_LEVEL`-gated), `LOG_FILENAME`/`LOG_FORMAT` (§7); **L6** startup banner first line per transport.
 - **B1** binary release on `v*` tags via GoReleaser; **B2** ldflags-embedded build metadata (`appName`/`appVersion`/`appCommitHash`/`appTimestamp`); **B4** image reuses the binary, never recompiles; **B5** banner format (§7, §8).
 - **R1** image build/publish for Hybrid; **R2** default branch `master`; **R3**/**R4** image tags (§8).
 - **G1** Go 1.27 pinned; **G2** Go stated; **G8** logrus; **G9** outbound HTTP via resty.dev/v3 (§4.1).
