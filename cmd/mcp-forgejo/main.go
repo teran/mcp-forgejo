@@ -39,12 +39,12 @@ func startupBanner() string {
 }
 
 // effectiveLogLevel returns the level at which to configure logging for the
-// selected transport (L02/M06). In HTTP/SSE mode logging is ALWAYS enabled,
+// selected launch mode (L02/M06). In HTTP mode logging is ALWAYS enabled,
 // defaulting to "info" and overridable via LOG_LEVEL. In stdio mode logging is
 // enabled only when LOG_LEVEL is set; an empty configured level disables it
 // (logging.Setup writes to io.Discard and no log file is opened).
-func effectiveLogLevel(transport, configured string) string {
-	if transport == "http-sse" {
+func effectiveLogLevel(mode, configured string) string {
+	if mode == "http" {
 		if configured == "" {
 			return "info"
 		}
@@ -114,20 +114,20 @@ func run(args []string) int {
 	}
 
 	fs := flag.NewFlagSet("mcp-forgejo", flag.ContinueOnError)
-	transport := fs.String("transport", cfg.Transport, "transport: stdio | http-sse")
+	mode := fs.String("mode", cfg.Mode, "mode: stdio | http")
 	if err = fs.Parse(args); err != nil {
 		fmt.Fprintf(os.Stderr, "parse flags: %v\n", err)
 		return 1
 	}
 
 	channel := logging.ChannelHTTP
-	if *transport == "stdio" {
+	if *mode == "stdio" {
 		channel = logging.ChannelStdio
 	}
 
 	// L02/M06: derive the effective log level from the launch mode. HTTP/SSE
 	// mode always logs (default "info"); stdio mode only when LOG_LEVEL is set.
-	level := effectiveLogLevel(*transport, cfg.LogLevel)
+	level := effectiveLogLevel(*mode, cfg.LogLevel)
 
 	logger, closer, err := logging.Setup(channel, level, cfg.LogFilename, cfg.LogFormat)
 	if err != nil {
@@ -155,10 +155,10 @@ func run(args []string) int {
 		return 1
 	}
 
-	switch *transport {
+	switch *mode {
 	case "stdio":
 		// The stdio transport has no HTTP Authorization header, so the Forgejo
-		// PAT must come from the environment (M6). HTTP/SSE mode instead accepts
+		// PAT must come from the environment (M6). HTTP mode instead accepts
 		// the token per-request from the Authorization: Bearer header, so it is
 		// not required at startup.
 		if cfg.ForgejoToken == "" {
@@ -170,9 +170,9 @@ func run(args []string) int {
 			logger.WithError(err).Error("stdio server failed")
 			return 1
 		}
-	case "http-sse":
+	case "http":
 		logger.WithField("addr", cfg.ListenAddr).
-			Info("starting mcp-forgejo in http-sse mode")
+			Info("starting mcp-forgejo in http mode")
 		// The observability endpoint (metrics/pprof/healthz/readyz) runs on a
 		// separate internal listener and is only enabled in HTTP mode; stdio
 		// owns stdout and does not start it (O1/O2/O4, N32).
@@ -186,7 +186,7 @@ func run(args []string) int {
 			return 1
 		}
 	default:
-		logger.Errorf("unknown transport %q (must be stdio or http-sse)", *transport)
+		logger.Errorf("unknown mode %q (must be stdio or http)", *mode)
 		return 1
 	}
 	return 0

@@ -16,7 +16,7 @@ type Config struct {
 	LogLevel     string `envconfig:"LOG_LEVEL"`
 	LogFilename  string `envconfig:"LOG_FILENAME" default:"/tmp/mcp-forgejo.log"`
 	LogFormat    string `envconfig:"LOG_FORMAT" default:"text"`
-	Transport    string `envconfig:"TRANSPORT" default:"stdio"`
+	Mode         string `envconfig:"MODE" default:"stdio"`
 	InternalAddr string `envconfig:"INTERNAL_ADDR" default:":8081"`
 }
 
