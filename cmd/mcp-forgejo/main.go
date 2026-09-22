@@ -49,17 +49,36 @@ var (
 	buildServerWithObserver = server.BuildWithObserver
 	upstreamObserver        = observability.NewUpstreamCollector()
 	runStdio                = server.RunStdio
-	runHTTPServer           = func(_ context.Context, cfg config.Config, s *mcp.Server) error {
+	runHTTPServer           = func(ctx context.Context, cfg config.Config, s *mcp.Server) error {
 		httpSrv := &http.Server{
 			Addr:              cfg.Host + ":" + cfg.Port,
 			Handler:           server.NewHTTPHandler(s),
 			ReadHeaderTimeout: 10 * time.Second,
 		}
-		err := httpSrv.ListenAndServe()
-		if err != nil && err != http.ErrServerClosed {
+
+		// serveErr carries the result of ListenAndServe back to the main
+		// goroutine. A buffered channel of one is enough: the serve goroutine
+		// writes at most once and never blocks on the send.
+		serveErr := make(chan error, 1)
+		go func() {
+			err := httpSrv.ListenAndServe()
+			if err == http.ErrServerClosed {
+				err = nil
+			}
+			serveErr <- err
+		}()
+
+		// Block until either the server fails on its own or the caller cancels
+		// the context (e.g. SIGINT/SIGTERM), then shut down gracefully.
+		select {
+		case err := <-serveErr:
 			return err
+		case <-ctx.Done():
+			shutdownCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 5*time.Second)
+			defer cancel()
+			_ = httpSrv.Shutdown(shutdownCtx)
+			return nil
 		}
-		return nil
 	}
 	runObservability = func(ctx context.Context, cfg config.Config, log *logrus.Logger) error {
 		return observability.Run(ctx, cfg.InternalAddr, log)
