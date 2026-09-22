@@ -383,11 +383,13 @@ func TestRunEmitsBannerFirstWhenLogLevelSet(t *testing.T) {
 	}
 }
 
-// TestRunNoBannerWhenLogLevelUnset verifies that when LOG_LEVEL is unset the
-// startup banner is NOT emitted (logging is disabled, so nothing is written).
-func TestRunNoBannerWhenLogLevelUnset(t *testing.T) {
+// TestRunHTTPEmitsBannerEvenWhenLogLevelUnset verifies that in HTTP/SSE mode
+// logging is ALWAYS enabled (L02/M06): even when LOG_LEVEL is unset the server
+// defaults to level "info" and emits the B5 startup banner as the first line.
+func TestRunHTTPEmitsBannerEvenWhenLogLevelUnset(t *testing.T) {
 	setBaseEnv(t)
 	t.Setenv("LOG_LEVEL", "")
+	t.Setenv("LOG_FORMAT", "text")
 
 	origRun := runHTTPServer
 	runHTTPServer = func(context.Context, config.Config, *mcp.Server) error { return nil }
@@ -401,8 +403,65 @@ func TestRunNoBannerWhenLogLevelUnset(t *testing.T) {
 	}
 	output := out()
 
-	if strings.Contains(output, "Starting ") {
-		t.Fatalf("expected no startup banner when LOG_LEVEL unset, got %q", output)
+	wantBanner := "Starting " + appName + "/" + appVersion +
+		" (commit: " + appCommitHash + "; built at " + appTimestamp + ")"
+	if !strings.Contains(output, wantBanner) {
+		t.Fatalf("output %q does not contain startup banner %q when LOG_LEVEL unset in http-sse mode", output, wantBanner)
+	}
+
+	lines := strings.Split(strings.TrimRight(output, "\n"), "\n")
+	if len(lines) == 0 {
+		t.Fatal("expected at least one log line")
+	}
+	if !strings.Contains(lines[0], wantBanner) {
+		t.Fatalf("first log line %q is not the startup banner %q", lines[0], wantBanner)
+	}
+}
+
+// TestRunNoBannerWhenLogLevelUnsetStdio verifies that in stdio mode logging is
+// enabled only when LOG_LEVEL is set (L02/M06): with LOG_LEVEL unset logging is
+// disabled entirely — no log file is created and no banner is emitted.
+func TestRunNoBannerWhenLogLevelUnsetStdio(t *testing.T) {
+	setBaseEnv(t)
+	t.Setenv("LOG_LEVEL", "")
+	logFile := os.Getenv("LOG_FILENAME")
+
+	origRun := runStdio
+	runStdio = func(context.Context, *mcp.Server) error { return nil }
+	defer func() { runStdio = origRun }()
+
+	if code := run([]string{"--transport", "stdio"}); code != 0 {
+		t.Fatalf("expected exit 0, got %d", code)
+	}
+
+	if _, err := os.Stat(logFile); !os.IsNotExist(err) {
+		t.Fatalf("expected no log file %q to be created when LOG_LEVEL is unset in stdio mode", logFile)
+	}
+}
+
+// TestEffectiveLogLevel verifies the L02/M06 launch-mode logging default:
+// HTTP/SSE mode always logs (default "info", overridable via LOG_LEVEL);
+// stdio mode logs only when LOG_LEVEL is set (empty disables it).
+func TestEffectiveLogLevel(t *testing.T) {
+	tests := []struct {
+		name       string
+		transport  string
+		configured string
+		want       string
+	}{
+		{name: "http defaults to info", transport: "http-sse", configured: "", want: "info"},
+		{name: "http honors LOG_LEVEL", transport: "http-sse", configured: "debug", want: "debug"},
+		{name: "http honors error level", transport: "http-sse", configured: "error", want: "error"},
+		{name: "stdio empty disables", transport: "stdio", configured: "", want: ""},
+		{name: "stdio honors LOG_LEVEL", transport: "stdio", configured: "info", want: "info"},
+		{name: "unknown transport treated as stdio", transport: "bogus", configured: "", want: ""},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := effectiveLogLevel(tt.transport, tt.configured); got != tt.want {
+				t.Errorf("effectiveLogLevel(%q, %q) = %q, want %q", tt.transport, tt.configured, got, tt.want)
+			}
+		})
 	}
 }
 

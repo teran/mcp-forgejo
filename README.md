@@ -162,7 +162,7 @@ export FORGEJO_TOKEN=<pat>
 export HOST=0.0.0.0
 export PORT=8080
 
-export LOG_LEVEL=info                 # enable logging (to stdout)
+export LOG_LEVEL=info                 # optional in HTTP mode — defaults to "info" (to stdout)
 export LOG_FORMAT=text                # or "json"
 
 ./mcp-forgejo --transport=http-sse
@@ -181,7 +181,7 @@ the path is configurable in the SDK options.
 | `HOST`           | `string`   | `0.0.0.0`                | Listen host for the HTTP/SSE MCP transport. |
 | `PORT`           | `string`   | `8080`                   | Listen port for the HTTP/SSE MCP transport. The MCP listen address is `HOST:PORT` (there is **no** `LISTEN_ADDR`). |
 | `INTERNAL_ADDR`  | `string`   | `:8081`                  | **Internal observability address** — separate listener for `/metrics`, `/debug/pprof/*`, `/healthz`, `/readyz` (HTTP/SSE mode only; see [Metrics & Observability](#metrics--observability)). |
-| `LOG_LEVEL`      | `string`   | (unset)                  | Logging level. **Unset ⇒ logging disabled.** Set (e.g. `info`, `debug`) to enable. |
+| `LOG_LEVEL`      | `string`   | (unset)                  | Logging level (`trace`/`debug`/`info`/`warn`/`error`). **Transport-dependent (L02):** in HTTP/SSE mode logging is **always enabled**, defaulting to `info` when `LOG_LEVEL` is unset; in stdio mode it is enabled **only when set** — unset ⇒ disabled (no log file). |
 | `LOG_FILENAME`   | `string`   | `/tmp/mcp-forgejo.log`   | Log file path for **stdio** transport (chmod 600). Ignored for HTTP/SSE (logs go to stdout, 12-factor). |
 | `LOG_FORMAT`     | `string`   | `text`                   | `text` (logrus text, full absolute timestamp) or `json`. |
 
@@ -192,7 +192,8 @@ all operations go to the remote Forgejo API (see `SPEC.md` §3).
 
 ### Startup banner
 
-When logging is enabled (i.e. `LOG_LEVEL` is set), the server writes a
+When logging is enabled — **always in HTTP/SSE mode** (defaults to `info`); in
+**stdio** mode only when `LOG_LEVEL` is set — the server writes a
 **startup banner** as the first log line on the transport's logging channel
 (file for stdio, stdout for HTTP/SSE):
 

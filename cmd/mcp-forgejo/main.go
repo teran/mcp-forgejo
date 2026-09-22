@@ -38,6 +38,21 @@ func startupBanner() string {
 	return fmt.Sprintf("Starting %s/%s (commit: %s; built at %s)", appName, appVersion, appCommitHash, appTimestamp)
 }
 
+// effectiveLogLevel returns the level at which to configure logging for the
+// selected transport (L02/M06). In HTTP/SSE mode logging is ALWAYS enabled,
+// defaulting to "info" and overridable via LOG_LEVEL. In stdio mode logging is
+// enabled only when LOG_LEVEL is set; an empty configured level disables it
+// (logging.Setup writes to io.Discard and no log file is opened).
+func effectiveLogLevel(transport, configured string) string {
+	if transport == "http-sse" {
+		if configured == "" {
+			return "info"
+		}
+		return configured
+	}
+	return configured
+}
+
 // These variables are the seams that let tests replace the real server build
 // and transport runners without spawning blocking servers.
 var (
@@ -110,7 +125,11 @@ func run(args []string) int {
 		channel = logging.ChannelStdio
 	}
 
-	logger, closer, err := logging.Setup(channel, cfg.LogLevel, cfg.LogFilename, cfg.LogFormat)
+	// L02/M06: derive the effective log level from the launch mode. HTTP/SSE
+	// mode always logs (default "info"); stdio mode only when LOG_LEVEL is set.
+	level := effectiveLogLevel(*transport, cfg.LogLevel)
+
+	logger, closer, err := logging.Setup(channel, level, cfg.LogFilename, cfg.LogFormat)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "logging: %v\n", err)
 		return 1
@@ -119,10 +138,11 @@ func run(args []string) int {
 		defer func() { _ = closer.Close() }()
 	}
 
-	// B5/L6: when logging is enabled (LOG_LEVEL set), emit the startup banner as
-	// the very first line, before the transport startup line. If LOG_LEVEL is
+	// B5/L6: when logging is enabled (always in HTTP/SSE mode; in stdio only
+	// when LOG_LEVEL is set — L02), emit the startup banner as the very first
+	// line, before the transport startup line. When the effective level is
 	// empty the logger writes to io.Discard, so nothing is emitted.
-	if cfg.LogLevel != "" {
+	if level != "" {
 		logger.Info(startupBanner())
 	}
 
