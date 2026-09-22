@@ -214,14 +214,15 @@ proxy should forward **only** the MCP listener, never the observability one.
 
 | Endpoint | Purpose |
 |----------|---------|
-| `GET /metrics` | Prometheus metrics — **standard Go collectors** (runtime/memstats + net/http) via the promhttp default registry. |
+| `GET /metrics` | Prometheus metrics via the promhttp default registry — the **standard Go collectors** (runtime/memstats + net/http) **plus upstream Forgejo response metrics** (O3): `forgejo_upstream_request_duration_seconds`, `forgejo_upstream_request_total` (labelled `{method,status}`), `forgejo_upstream_request_size_bytes`, `forgejo_upstream_response_size_bytes`. |
 | `GET /debug/pprof/…` | `net/http/pprof` profiling (`cmdline`, `profile`, `symbol`, `trace`). |
 | `GET /healthz` | Liveness probe (always `200`). |
 | `GET /readyz` | Readiness probe (always `200`). |
 
 These are served by their **own `http.Server`**, separate from the MCP JSON-RPC/SSE
-flow. Only the **standard Go collectors** are exposed — there are **no upstream
-Forgejo response metrics** (O3 is not implemented). See `SPEC.md` §7.1.
+flow. Alongside the standard Go collectors, the **upstream Forgejo response metrics**
+(O3) are exposed on `/metrics`, observed once per outbound Forgejo request by the
+infrastructure client. See `SPEC.md` §7.1.
 
 ## Transports & Auth
 
