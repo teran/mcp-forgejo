@@ -42,8 +42,7 @@ Configuration is loaded from the environment with [`kelseyhightower/envconfig`](
 |------------------|------------|--------------------|-------------|
 | `FORGEJO_URL`    | `string`   | (from env)         | Base URL of the Forgejo instance, e.g. `https://git.example.com`. Required. |
 | `FORGEJO_TOKEN`  | `string`   | (empty)            | Forgejo **personal access token** (PAT). **Secret** — never logged, echoed, or included in tool output (S2/N2). **Required for the stdio transport; optional for the HTTP transport** (over HTTP the token is supplied per-request via `Authorization: Bearer <token>`; `FORGEJO_TOKEN` is only a fallback). |
-| `HOST`           | `string`   | `0.0.0.0`          | Listen host for the HTTP/SSE MCP transport. |
-| `PORT`           | `string`   | `8080`             | Listen port for the HTTP/SSE MCP transport. The MCP listen address is `HOST:PORT` (there is **no** `LISTEN_ADDR`; the listener is configured through `HOST`+`PORT`, see §7.1). |
+| `LISTEN_ADDR`    | `string`   | `:8080`            | **MCP listen address** for the HTTP/SSE MCP transport (O4). The internal observability listener is a separate address, `INTERNAL_ADDR`. |
 | `INTERNAL_ADDR`  | `string`   | `:8081`            | **Internal observability address** — a separate listener for `/metrics`, `/debug/pprof/*`, `/healthz`, `/readyz`, distinct from the MCP listen address (O1/O4/N32). Only started in HTTP/SSE mode (see §7.1). |
 | `LOG_LEVEL`      | `string`   | (unset)            | Logging level (`trace`, `debug`, `info`, `warn`, `error`). **Mode-dependent (L2):** HTTP/SSE mode always logs, defaulting to `info` when unset; stdio mode logs **only when set** — unset ⇒ disabled. |
 | `LOG_FILENAME`   | `string`   | `/tmp/mcp-forgejo.log` | Log file path for the **stdio** transport (chmod **600**). Ignored for HTTP/SSE (L1, L3). |
@@ -98,7 +97,7 @@ At startup the registry is populated once, then bound to the MCP SDK `Server` (v
 Transport selection happens at startup, in the composition root:
 
 - **stdio driver** (`server/stdio.go`) — connects the SDK server to `os.Stdin`/`os.Stdout`. Logging sink = **file** (`LOG_FILENAME`, chmod 600).
-- **http/sse driver** (`server/http.go`) — serves the MCP HTTP/SSE endpoint on `HOST:PORT`. Logging sink = **stdout** (12-factor).
+- **http/sse driver** (`server/http.go`) — serves the MCP HTTP/SSE endpoint on `LISTEN_ADDR`. Logging sink = **stdout** (12-factor).
 
 A single launch-mode flag selects the driver (e.g. `--transport=stdio|http-sse`, defaulting sensibly per how it is launched). Both drivers share the same `Server` construction, tools, and application layer.
 
@@ -153,7 +152,7 @@ Because the server is stateless, scaling (e.g. multiple HTTP/SSE replicas behind
 - **S4 — no local filesystem access.** The server does not touch the local filesystem; it only talks to the remote Forgejo API over HTTP. Consequently **`ALLOW_DIRS` is not required and is omitted** from config (see §3). There is no local path to scope, so N3 is vacuous by design.
 - **S5 / N8 — fix, don't suppress.** gosec and govulncheck findings are **fixed**, never suppressed via blanket exclusions or default `#nosec`. Findings block the build (C4/C5). Where a finding **cannot** be fixed — e.g. a **test-only** dependency that is not linked into the production binary and has no upstream fix — it is excluded by **scoping the scan to production packages** (`govulncheck ./cmd/... ./domain/... ./application/... ./infrastructure/... ./server/... ./config/... ./logging/... ./observability/...`) rather than suppressing the finding, and the exclusion is documented here with its justification. Current justified exclusion: the e2e suite depends on `github.com/docker/docker` (pulled transitively via `go-docker-testsuite`) to run a real Forgejo container; it is **not** part of the release binary (`go list -deps ./cmd/mcp-forgejo` contains no `docker/*`), and the two findings (GO-2026-4887, GO-2026-4883) have **Fixed in: N/A**.
 - **S6 / N20 — module path matches the public location.** The module/package name `github.com/teran/mcp-forgejo` matches the canonical public repository location and must be kept in sync with it. It is not a placeholder.
-- **S7 — reverse-proxy authn/authz for HTTP/SSE.** The MCP HTTP/SSE layer offers **no authentication of its own**: the server holds the PAT in its environment and uses it to call Forgejo, but any client that can reach `HOST:PORT` can drive every tool with the operator's privileges — including destructive ones (`forgejo_repo_delete`, `forgejo_pull_merge`, …). For any HTTP/SSE deployment the listener **MUST** sit behind a reverse proxy that enforces client authentication/authorization (e.g. mTLS, OIDC, network ACL, or a proxy token) before requests reach the server. Additionally, run the PAT under a **dedicated low-privilege Forgejo user** scoped to only the operations the team actually needs. In **stdio** mode the client is trusted by construction (the local process that spawned the server), so this does not apply.
+- **S7 — reverse-proxy authn/authz for HTTP/SSE.** The MCP HTTP/SSE layer offers **no authentication of its own**: the server holds the PAT in its environment and uses it to call Forgejo, but any client that can reach `LISTEN_ADDR` can drive every tool with the operator's privileges — including destructive ones (`forgejo_repo_delete`, `forgejo_pull_merge`, …). For any HTTP/SSE deployment the listener **MUST** sit behind a reverse proxy that enforces client authentication/authorization (e.g. mTLS, OIDC, network ACL, or a proxy token) before requests reach the server. Additionally, run the PAT under a **dedicated low-privilege Forgejo user** scoped to only the operations the team actually needs. In **stdio** mode the client is trusted by construction (the local process that spawned the server), so this does not apply.
 
 ---
 
@@ -296,15 +295,16 @@ Uses **`logrus`** (`github.com/sirupsen/logrus`).
 Because `mcp-forgejo` is **HYBRID** (§1), it is subject to the **Remote** observability
 requirements whenever it is launched in **HTTP/SSE** mode (O1/N32): it exposes an
 **internal observability endpoint** on a **separate listener**, distinct from the MCP
-listen address, so a reverse proxy forwards **only** the MCP transport (`HOST:PORT`)
+listen address, so a reverse proxy forwards **only** the MCP transport (`LISTEN_ADDR`)
 and never the observability one. Observability is **always enabled** for HTTP/SSE —
 there is **no opt-out flag** (N32). It is **not** started in stdio mode (stdio owns
 stdout and has no HTTP listener).
 
-- **Internal address (O4):** `INTERNAL_ADDR` (default **`:8081`**), configured via
-  `config.InternalAddr`. The MCP listen address is `HOST:PORT` (default `0.0.0.0:8080`),
-  configured via `config.Host`+`config.Port` — there is **no `LISTEN_ADDR`**; the MCP
-  listener is expressed as `HOST`+`PORT` in the code (see §3). Both ports are env-overridable.
+- **Listen vs internal address (O4):** the MCP listen address is **`LISTEN_ADDR`**
+  (default **`:8080`**), configured via `config.ListenAddr`; the internal observability
+  address is **`INTERNAL_ADDR`** (default **`:8081`**), configured via
+  `config.InternalAddr`. Both are env-overridable and served on distinct listeners so a
+  reverse proxy forwards only the MCP transport to `:8080`.
 - **Endpoints (served by `observability.NewHandler()`, `observability/observability.go`):**
   - `GET /metrics` — Prometheus metrics via `promhttp.Handler()` on the **default
     registry**, which already includes the **standard Go collectors** — Go
@@ -415,7 +415,7 @@ The following MUST / MUST NOT are satisfied by this SPEC and scaffold:
 - **M4** every tool described with title/annotations/instructions (§6); **M5** tools are complete use cases (§6).
 - **C1** coverage ≥ 95% gate (fails build); **C2** golangci-lint; **C3** `-race`; **C4** gosec; **C5** govulncheck; **C6** go-arch-lint authored + enforced; **C7** gremlins hard gate (§8).
 - **T1** TDD workflow referenced (§9); **T2/C4/N30** e2e build-tagged, run via `make e2e` in a dedicated CI hard-gate job (§8).
-- **O1** observability endpoint on a separate `:8081` (`INTERNAL_ADDR`) always present in HTTP/SSE mode, no opt-out; **O2** standard Go runtime/net-http collectors on `/metrics`; **O3** upstream metrics claimed (four `forgejo_upstream_*` metrics on `/metrics`, observed per outbound request, §7.1); **O4** `HOST`+`PORT` (MCP listen) vs `INTERNAL_ADDR` (observability) — both env-overridable (**N32** satisfied, §7.1).
+- **O1** observability endpoint on a separate `:8081` (`INTERNAL_ADDR`) always present in HTTP/SSE mode, no opt-out; **O2** standard Go runtime/net-http collectors on `/metrics`; **O3** upstream metrics claimed (four `forgejo_upstream_*` metrics on `/metrics`, observed per outbound request, §7.1); **O4** `LISTEN_ADDR` (MCP listen) vs `INTERNAL_ADDR` (observability) — both env-overridable (**N32** satisfied, §7.1).
 - **S1** TLS never in-server; **S2** no secret leakage + redaction (centralized helpers, not per-field tags — S02); **S3** tools grouped read→write→delete; **S4** no local FS → `ALLOW_DIRS` omitted & explained; **S5** fix-don't-suppress; **S6** module path matches the public location (§5); **S9** control-character sanitization of free text (S09/N23, §5).
 - **A1** DDD/Clean architecture with layout, tool registry, transport wiring, config, error handling (§4); **X01** stateless state model with no local storage/migrations (§4.6).
 - **D1** README English; **D2** SPEC/AGENTS strictly English; **D3** README begins with the AI-Generated Content disclaimer; **D4** full badge set.

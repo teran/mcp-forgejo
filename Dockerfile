@@ -15,7 +15,7 @@ FROM gcr.io/distroless/static-debian12:nonroot
 WORKDIR /app
 COPY dist/mcp-forgejo /app/mcp-forgejo
 
-# HTTP/SSE listener port (HOST/PORT config). Plain HTTP only — TLS is always
+# HTTP/SSE listener port (LISTEN_ADDR config). Plain HTTP only — TLS is always
 # terminated at the reverse proxy in front of this container.
 EXPOSE 8080
 

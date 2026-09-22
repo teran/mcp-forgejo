@@ -12,8 +12,7 @@ import (
 type Config struct {
 	ForgejoURL   string `envconfig:"FORGEJO_URL"`
 	ForgejoToken string `envconfig:"FORGEJO_TOKEN" secret:"true"`
-	Host         string `envconfig:"HOST" default:"0.0.0.0"`
-	Port         string `envconfig:"PORT" default:"8080"`
+	ListenAddr   string `envconfig:"LISTEN_ADDR" default:":8080"`
 	LogLevel     string `envconfig:"LOG_LEVEL"`
 	LogFilename  string `envconfig:"LOG_FILENAME" default:"/tmp/mcp-forgejo.log"`
 	LogFormat    string `envconfig:"LOG_FORMAT" default:"text"`

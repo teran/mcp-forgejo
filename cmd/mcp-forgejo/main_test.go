@@ -7,7 +7,6 @@ import (
 	"net"
 	"net/http"
 	"os"
-	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -520,14 +519,7 @@ func waitForHTTP(addr string) bool {
 // because the current closure ignores ctx and blocks in ListenAndServe forever.
 func TestRunHTTPServerShutsDownGracefully(t *testing.T) {
 	addr := freePort(t)
-	host, portStr, err := net.SplitHostPort(addr)
-	if err != nil {
-		t.Fatalf("SplitHostPort(%q): %v", addr, err)
-	}
-	if _, err := strconv.Atoi(portStr); err != nil {
-		t.Fatalf("Atoi(%q): %v", portStr, err)
-	}
-	cfg := config.Config{Host: host, Port: portStr}
+	cfg := config.Config{ListenAddr: addr}
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
@@ -558,11 +550,7 @@ func TestRunHTTPServerShutsDownGracefully(t *testing.T) {
 // passes but the shutdown phase after cancel() fails.
 func TestRunHTTPServerDoesNotReturnBeforeCancel(t *testing.T) {
 	addr := freePort(t)
-	host, portStr, err := net.SplitHostPort(addr)
-	if err != nil {
-		t.Fatalf("SplitHostPort(%q): %v", addr, err)
-	}
-	cfg := config.Config{Host: host, Port: portStr}
+	cfg := config.Config{ListenAddr: addr}
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()

@@ -36,7 +36,8 @@ instance over HTTP; it **never touches the local filesystem** (so there is **no
   observability listener on `INTERNAL_ADDR` (default `:8081`) — `/metrics` (standard
   Go collectors), `/debug/pprof/*`, `/healthz`, `/readyz` — with **no opt-out**
   (O1/O4/N32). It is **not** started in stdio mode. The MCP listen address is
-  `HOST:PORT` (default `0.0.0.0:8080`); there is no `LISTEN_ADDR`. In addition to the
+  `LISTEN_ADDR` (default `:8080`); the internal observability address is
+  `INTERNAL_ADDR` (default `:8081`). In addition to the
   standard Go collectors, upstream Forgejo metrics are exposed on `/metrics` (O3:
   `forgejo_upstream_request_duration_seconds`, `forgejo_upstream_request_total`,
   `forgejo_upstream_request_size_bytes`, `forgejo_upstream_response_size_bytes`),
@@ -123,7 +124,7 @@ FORGEJO_URL=https://git.example.com FORGEJO_TOKEN=<pat> ./mcp-forgejo --transpor
 
 # run as a remote sidecar (HTTP/SSE)
 FORGEJO_URL=https://git.example.com FORGEJO_TOKEN=<pat> \
-  HOST=0.0.0.0 PORT=8080 ./mcp-forgejo --transport=http-sse
+  LISTEN_ADDR=:8080 ./mcp-forgejo --transport=http-sse
 ```
 
 - **Image build:** the binary is produced by **GoReleaser** (`.goreleaser.yaml`)

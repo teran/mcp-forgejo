@@ -115,7 +115,7 @@ FORGEJO_URL=https://git.example.com FORGEJO_TOKEN=<pat> \
 
 ```bash
 FORGEJO_URL=https://git.example.com FORGEJO_TOKEN=<pat> \
-  HOST=0.0.0.0 PORT=8080 ./mcp-forgejo --transport=http-sse
+  LISTEN_ADDR=:8080 ./mcp-forgejo --transport=http-sse
 ```
 
 Or run the container image (built by **GoReleaser** — the `Dockerfile` only
@@ -152,15 +152,14 @@ The transport flag may be omitted — **stdio is the default** when neither
 
 ### Example: HTTP/SSE
 
-The same env vars plus the listener host/port. Logs go to **stdout**
+The same env vars plus the listener address. Logs go to **stdout**
 (12-factor), so this mode is meant to run as a sidecar behind a reverse proxy
 that terminates TLS and enforces client auth:
 
 ```bash
 export FORGEJO_URL=https://git.example.com
 export FORGEJO_TOKEN=<pat>
-export HOST=0.0.0.0
-export PORT=8080
+export LISTEN_ADDR=:8080
 
 export LOG_LEVEL=info                 # optional in HTTP mode — defaults to "info" (to stdout)
 export LOG_FORMAT=text                # or "json"
@@ -178,8 +177,7 @@ the path is configurable in the SDK options.
 |------------------|------------|--------------------------|--------------------------------------|
 | `FORGEJO_URL`    | `string`   | (from env)               | Base URL of the Forgejo instance, e.g. `https://git.example.com`. Required. |
 | `FORGEJO_TOKEN`  | `string`   | (empty)                  | Forgejo **personal access token** (PAT). **Secret** — never logged/leaked. **Required for the stdio transport; optional for the HTTP transport** (over HTTP the token is supplied per-request via `Authorization: Bearer <token>`; `FORGEJO_TOKEN` is only a fallback). |
-| `HOST`           | `string`   | `0.0.0.0`                | Listen host for the HTTP/SSE MCP transport. |
-| `PORT`           | `string`   | `8080`                   | Listen port for the HTTP/SSE MCP transport. The MCP listen address is `HOST:PORT` (there is **no** `LISTEN_ADDR`). |
+| `LISTEN_ADDR`    | `string`   | `:8080`                  | **MCP listen address** for the HTTP/SSE MCP transport (O4). |
 | `INTERNAL_ADDR`  | `string`   | `:8081`                  | **Internal observability address** — separate listener for `/metrics`, `/debug/pprof/*`, `/healthz`, `/readyz` (HTTP/SSE mode only; see [Metrics & Observability](#metrics--observability)). |
 | `LOG_LEVEL`      | `string`   | (unset)                  | Logging level (`trace`/`debug`/`info`/`warn`/`error`). **Transport-dependent (L02):** in HTTP/SSE mode logging is **always enabled**, defaulting to `info` when `LOG_LEVEL` is unset; in stdio mode it is enabled **only when set** — unset ⇒ disabled (no log file). |
 | `LOG_FILENAME`   | `string`   | `/tmp/mcp-forgejo.log`   | Log file path for **stdio** transport (chmod 600). Ignored for HTTP/SSE (logs go to stdout, 12-factor). |
@@ -209,7 +207,7 @@ and `SPEC.md` §8 B2/B5).
 
 In **HTTP/SSE** mode the server exposes an **observability endpoint on a separate
 internal listener**, `INTERNAL_ADDR` (default **`:8081`**), distinct from the MCP
-listen address (`HOST:PORT`, default `0.0.0.0:8080`). It is **always enabled** in
+listen address (`LISTEN_ADDR`, default **`:8080`**). It is **always enabled** in
 HTTP/SSE mode — there is no opt-out — and is **not** started in stdio mode. A reverse
 proxy should forward **only** the MCP listener, never the observability one.
 

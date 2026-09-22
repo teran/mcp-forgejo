@@ -66,7 +66,7 @@ var (
 	runStdio                = server.RunStdio
 	runHTTPServer           = func(ctx context.Context, cfg config.Config, s *mcp.Server) error {
 		httpSrv := &http.Server{
-			Addr:              cfg.Host + ":" + cfg.Port,
+			Addr:              cfg.ListenAddr,
 			Handler:           server.NewHTTPHandler(s),
 			ReadHeaderTimeout: 10 * time.Second,
 		}
@@ -171,7 +171,7 @@ func run(args []string) int {
 			return 1
 		}
 	case "http-sse":
-		logger.WithFields(logrus.Fields{"host": cfg.Host, "port": cfg.Port}).
+		logger.WithField("addr", cfg.ListenAddr).
 			Info("starting mcp-forgejo in http-sse mode")
 		// The observability endpoint (metrics/pprof/healthz/readyz) runs on a
 		// separate internal listener and is only enabled in HTTP mode; stdio
