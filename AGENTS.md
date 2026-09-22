@@ -36,8 +36,11 @@ instance over HTTP; it **never touches the local filesystem** (so there is **no
   observability listener on `INTERNAL_ADDR` (default `:8081`) — `/metrics` (standard
   Go collectors), `/debug/pprof/*`, `/healthz`, `/readyz` — with **no opt-out**
   (O1/O4/N32). It is **not** started in stdio mode. The MCP listen address is
-  `HOST:PORT` (default `0.0.0.0:8080`); there is no `LISTEN_ADDR`. Only standard Go
-  metrics are exposed — no upstream Forgejo metrics (O3). See SPEC.md §7.1.
+  `HOST:PORT` (default `0.0.0.0:8080`); there is no `LISTEN_ADDR`. In addition to the
+  standard Go collectors, upstream Forgejo metrics are exposed on `/metrics` (O3:
+  `forgejo_upstream_request_duration_seconds`, `forgejo_upstream_request_total`,
+  `forgejo_upstream_request_size_bytes`, `forgejo_upstream_response_size_bytes`),
+  observed once per outbound request. See SPEC.md §7.1.
 
 ## TDD workflow (T1)
 
