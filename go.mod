@@ -1,11 +1,12 @@
 module github.com/teran/mcp-forgejo
 
-go 1.27.0
+go 1.27.1
 
 require (
 	github.com/kelseyhightower/envconfig v1.4.0
-	github.com/modelcontextprotocol/go-sdk v1.7.0
+	github.com/modelcontextprotocol/go-sdk v1.8.0
 	github.com/prometheus/client_golang v1.24.1
+	github.com/prometheus/client_model v0.6.2
 	github.com/sirupsen/logrus v1.10.2
 	github.com/stretchr/testify v1.12.1
 	github.com/teran/go-docker-testsuite/applications/forgejo v1.6.0
@@ -34,7 +35,6 @@ require (
 	github.com/opencontainers/go-digest v1.0.0 // indirect
 	github.com/opencontainers/image-spec v1.1.1 // indirect
 	github.com/pkg/errors v0.9.1 // indirect
-	github.com/prometheus/client_model v0.6.2 // indirect
 	github.com/prometheus/common v0.70.1 // indirect
 	github.com/prometheus/procfs v0.21.1 // indirect
 	github.com/segmentio/asm v1.1.3 // indirect

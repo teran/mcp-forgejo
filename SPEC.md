@@ -2,7 +2,7 @@
 
 **Purpose.** `mcp-forgejo` is a [Model Context Protocol](https://modelcontextprotocol.io) (MCP) server that wraps the **Forgejo REST API** so a model-driven client (editor, CLI, or remote team sidecar) can perform common software-development tasks against an internal Forgejo instance: repositories, files/contents, issues, pull requests, branches, releases, and organizations.
 
-**Language (G2).** Go, pinned at the latest stable **1.27.0** (see `go.mod`, `GO_VERSION: "1.27"` in `ci.yml`) — see [G1]. The official MCP SDK `github.com/modelcontextprotocol/go-sdk` is used; the protocol is **never hand-rolled** (M1).
+**Language (G2).** Go, pinned at the latest stable **1.27.1** (see `go.mod`, `GO_VERSION: "1.27"` in `ci.yml`) — see [G1]. The official MCP SDK `github.com/modelcontextprotocol/go-sdk` is used; the protocol is **never hand-rolled** (M1).
 
 **Deployment type (S6).** **HYBRID** — supports both **STDIO** (local editor/CLI companion) and **HTTP/SSE** (remote sidecar). Because it supports HTTP/SSE, it MUST build & publish a container image (R1) and route logs to the channel appropriate per transport (L1). Under DDD/Clean this is achieved with **driver implementations per launch mode** (a `stdio` driver and an `http/sse` driver), selected at startup.
 
@@ -176,7 +176,7 @@ All tools target the **closed domain** of the configured Forgejo instance (`open
 - **write/update** tools → `readOnlyHint: false`, `destructiveHint: false`, `openWorldHint: false`; `idempotentHint: true` only where repeating with identical args has no extra effect.
 - **delete** tools → `readOnlyHint: false`, `destructiveHint: true`, `idempotentHint: false`, `openWorldHint: false` (deleting an already-removed resource typically errors, so delete is **not** idempotent).
 
-Representative JSON-Schema-style metadata block (shown for one tool; all tools carry the same five annotations; per-tool model guidance is carried in the tool `description` — the go-sdk v1.7.0 `Tool` has no separate `instructions` field, so model instructions are merged into `description`):
+Representative JSON-Schema-style metadata block (shown for one tool; all tools carry the same five annotations; per-tool model guidance is carried in the tool `description` — the go-sdk v1.8.0 `Tool` has no separate `instructions` field, so model instructions are merged into `description`):
 
 ```json
 {
@@ -341,7 +341,7 @@ The Go profile is enforced in CI (`.github/workflows/ci.yml`) and locally:
 
 | Check | Command | Gate |
 |-------|---------|------|
-| Go version | `go 1.27.0` in `go.mod` == `GO_VERSION: "1.27"` | G1/N7 |
+| Go version | `go 1.27.1` in `go.mod` == `GO_VERSION: "1.27"` | G1/N7 |
 | Coverage | `go test -race -coverprofile=cover.out -covermode=atomic ./...` + total **≥ 95%** | C1/N6 (build fails below 95) |
 | Race detector | `go test -race ./...` | C3 |
 | Lint + format | `golangci-lint run ./...` (gofmt/gofumpt) | C2 |

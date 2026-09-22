@@ -101,19 +101,22 @@ jobs:
   gosec:
     name: gosec (security scan)
     runs-on: ubuntu-latest
-    env:
-      GO111MODULE: on
     steps:
       - uses: actions/checkout@v4
 
       - uses: actions/setup-go@v5
         with:
           go-version: ${{ env.GO_VERSION }}
+          cache: true
 
-      - name: Run gosec
-        uses: securego/gosec@master
-        with:
-          args: ./...
+      # Install gosec from source with the repo's Go toolchain (>= 1.27.1)
+      # instead of the securego/gosec container action, which bundles an older
+      # Go (1.27.0) that cannot load a module requiring go >= 1.27.1.
+      - name: Install gosec
+        run: go install github.com/securego/gosec/v2/cmd/gosec@latest
+
+      - name: Run gosec (findings MUST be fixed, never suppressed)
+        run: gosec ./...
 
   # ---- Secret scan over git history (N28/C03): findings MUST be fixed ----
   # Scans the full git history (not just the working tree) for accidentally
