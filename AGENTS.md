@@ -24,26 +24,26 @@ instance over HTTP; it **never touches the local filesystem** (so there is **no
 - **Module path:** `github.com/teran/mcp-forgejo` (matches the canonical public
   repository location). Keep it in sync with the repository.
 - **SDK:** `github.com/modelcontextprotocol/go-sdk` (official; never hand-roll).
-- **Logger:** `logrus` only. Channel per transport (L1): HTTP/SSE → stdout;
+- **Logger:** `logrus` only. Channel per transport (L01): HTTP/SSE → stdout;
   stdio → file (`/tmp/mcp-forgejo.log`, chmod 600), **never** stdout.
 - **Default branch:** `master` (never `main`).
 - **Auth:** single Forgejo PAT. Per-transport: **HTTP/SSE** accepts the token
   per-request from the `Authorization: Bearer <token>` header (remote auth via
-  headers, M6; requests without a valid Bearer token get `401`); **stdio**
+  headers, M06; requests without a valid Bearer token get `401`); **stdio**
   requires `FORGEJO_TOKEN` env (local auth via env). The resolved token is sent
   outbound as `Authorization: token <PAT>` on every Forgejo call. **No OAuth2.**
 - **Observability (Hybrid/Remote):** HTTP/SSE mode **always** starts the internal
   observability listener on `INTERNAL_ADDR` (default `:8081`) — `/metrics` (standard
   Go collectors), `/debug/pprof/*`, `/healthz`, `/readyz` — with **no opt-out**
-  (O1/O4/N32). It is **not** started in stdio mode. The MCP listen address is
+  (O01/O04/N32). It is **not** started in stdio mode. The MCP listen address is
   `LISTEN_ADDR` (default `:8080`); the internal observability address is
   `INTERNAL_ADDR` (default `:8081`). In addition to the
-  standard Go collectors, upstream Forgejo metrics are exposed on `/metrics` (O3:
+  standard Go collectors, upstream Forgejo metrics are exposed on `/metrics` (O03:
   `forgejo_upstream_request_duration_seconds`, `forgejo_upstream_request_total`,
   `forgejo_upstream_request_size_bytes`, `forgejo_upstream_response_size_bytes`),
   observed once per outbound request. See SPEC.md §7.1.
 
-## TDD workflow (T1)
+## TDD workflow (T01)
 
 All features and fixes are **test-first**, in isolated contexts:
 
@@ -87,10 +87,10 @@ make e2e                                # e2e via go-docker-testsuite (build tag
 
 - **Coverage gate:** total coverage < **95%** fails the build. Keep it above.
 - **Security:** never commit, log, echo, or surface `FORGEJO_TOKEN` or any
-  credential. Redact it from outputs and logs (S2). Do **not** add blanket
-  `#nosec` / default excludes — **fix, don't suppress** (S5/N8).
+  credential. Redact it from outputs and logs (S02). Do **not** add blanket
+  `#nosec` / default excludes — **fix, don't suppress** (S05/N02GO).
 - **TLS:** never implement TLS inside the server; it is the reverse proxy's job
-  (S1/N1).
+  (S01/N01).
 - **Architecture:** respect `.go-arch-lint.yml` edges — `cmd` → `internal`,
   `domain` is pure, `application`/`infrastructure` depend only on `domain`,
   `server` binds them; `config`/`logging` are leaves. `go-arch-lint check` must
@@ -113,7 +113,7 @@ make e2e                                # e2e via go-docker-testsuite (build tag
 ## Build / image workflow (Hybrid)
 
 The server builds a static binary and a container image (required because it
-supports HTTP/SSE — R1).
+supports HTTP/SSE — R01).
 
 ```bash
 # local build
@@ -135,8 +135,8 @@ FORGEJO_URL=https://git.example.com FORGEJO_TOKEN=<pat> \
   docker build -t mcp-forgejo .
   ```
 - **CI publish:** `.github/workflows/images.yml` runs a GoReleaser build step then
-  builds/publishes the image on every git tag (R3 tags) and every `master`
-  commit (R4 tags) to `ghcr.io/teran/mcp-forgejo`.
+  builds/publishes the image on every git tag (R03 tags) and every `master`
+  commit (R04 tags) to `ghcr.io/teran/mcp-forgejo`.
 
 ## Pointers
 

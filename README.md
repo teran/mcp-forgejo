@@ -177,7 +177,7 @@ the path is configurable in the SDK options.
 |------------------|------------|--------------------------|--------------------------------------|
 | `FORGEJO_URL`    | `string`   | (from env)               | Base URL of the Forgejo instance, e.g. `https://git.example.com`. Required. |
 | `FORGEJO_TOKEN`  | `string`   | (empty)                  | Forgejo **personal access token** (PAT). **Secret** — never logged/leaked. **Required for the stdio transport; optional for the HTTP transport** (over HTTP the token is supplied per-request via `Authorization: Bearer <token>`; `FORGEJO_TOKEN` is only a fallback). |
-| `LISTEN_ADDR`    | `string`   | `:8080`                  | **MCP listen address** for the HTTP/SSE MCP transport (O4). |
+| `LISTEN_ADDR`    | `string`   | `:8080`                  | **MCP listen address** for the HTTP/SSE MCP transport (O04). |
 | `INTERNAL_ADDR`  | `string`   | `:8081`                  | **Internal observability address** — separate listener for `/metrics`, `/debug/pprof/*`, `/healthz`, `/readyz` (HTTP/SSE mode only; see [Metrics & Observability](#metrics--observability)). |
 | `LOG_LEVEL`      | `string`   | (unset)                  | Logging level (`trace`/`debug`/`info`/`warn`/`error`). **Transport-dependent (L02):** in HTTP/SSE mode logging is **always enabled**, defaulting to `info` when `LOG_LEVEL` is unset; in stdio mode it is enabled **only when set** — unset ⇒ disabled (no log file). |
 | `LOG_FILENAME`   | `string`   | `/tmp/mcp-forgejo.log`   | Log file path for **stdio** transport (chmod 600). Ignored for HTTP/SSE (logs go to stdout, 12-factor). |
@@ -201,7 +201,7 @@ Starting mcp-forgejo/1.2.3 (commit: abc1234; built at 2026-09-10T12:00:00Z)
 
 The banner is populated at **build time** via ldflags
 (`appName`/`appVersion`/`appCommitHash`/`appTimestamp`, see `.goreleaser.yaml`
-and `SPEC.md` §8 B2/B5).
+and `SPEC.md` §8 B02/B05).
 
 ### Metrics & Observability
 
@@ -213,14 +213,14 @@ proxy should forward **only** the MCP listener, never the observability one.
 
 | Endpoint | Purpose |
 |----------|---------|
-| `GET /metrics` | Prometheus metrics via the promhttp default registry — the **standard Go collectors** (runtime/memstats + net/http) **plus upstream Forgejo response metrics** (O3): `forgejo_upstream_request_duration_seconds`, `forgejo_upstream_request_total` (labelled `{method,status}`), `forgejo_upstream_request_size_bytes`, `forgejo_upstream_response_size_bytes`. |
+| `GET /metrics` | Prometheus metrics via the promhttp default registry — the **standard Go collectors** (runtime/memstats + net/http) **plus upstream Forgejo response metrics** (O03): `forgejo_upstream_request_duration_seconds`, `forgejo_upstream_request_total` (labelled `{method,status}`), `forgejo_upstream_request_size_bytes`, `forgejo_upstream_response_size_bytes`. |
 | `GET /debug/pprof/…` | `net/http/pprof` profiling (`cmdline`, `profile`, `symbol`, `trace`). |
 | `GET /healthz` | Liveness probe (always `200`). |
 | `GET /readyz` | Readiness probe (always `200`). |
 
 These are served by their **own `http.Server`**, separate from the MCP JSON-RPC/SSE
 flow. Alongside the standard Go collectors, the **upstream Forgejo response metrics**
-(O3) are exposed on `/metrics`, observed once per outbound Forgejo request by the
+(O03) are exposed on `/metrics`, observed once per outbound Forgejo request by the
 infrastructure client. See `SPEC.md` §7.1.
 
 ## Transports & Auth
@@ -238,7 +238,7 @@ infrastructure client. See `SPEC.md` §7.1.
   that token (or the `FORGEJO_TOKEN` fallback) against Forgejo. For defense in
   depth, place the HTTP/SSE listener behind a reverse proxy that enforces client
   authn/authz (mTLS / OIDC / ACL), and prefer a **dedicated low-privilege Forgejo
-  user** for the token. See `SPEC.md` §5 (S7).
+  user** for the token. See `SPEC.md` §5 (S07).
 
 ### Token: per-transport handling
 
@@ -297,7 +297,7 @@ make e2e-cover    # e2e with a separate coverage profile (e2e-cover.out)
 Every file in `e2e/` carries a `//go:build e2e` build tag, so the suite is
 **excluded from the default unit run** (`go test ./...` / `make test`). CI runs it
 in a **dedicated `e2e` job** as a **hard gate** (a failing e2e test breaks the build).
-See `SPEC.md` §8 (T2/C4/N30).
+See `SPEC.md` §8 (T02/C04/N30).
 
 ## Architecture
 
