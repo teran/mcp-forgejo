@@ -120,11 +120,11 @@ supports HTTP/SSE — R1).
 go build -o mcp-forgejo ./cmd/mcp-forgejo
 
 # run locally (stdio)
-FORGEJO_URL=https://git.example.com FORGEJO_TOKEN=<pat> ./mcp-forgejo --transport=stdio
+FORGEJO_URL=https://git.example.com FORGEJO_TOKEN=<pat> ./mcp-forgejo -mode stdio
 
 # run as a remote sidecar (HTTP/SSE)
 FORGEJO_URL=https://git.example.com FORGEJO_TOKEN=<pat> \
-  LISTEN_ADDR=:8080 ./mcp-forgejo --transport=http-sse
+  LISTEN_ADDR=:8080 ./mcp-forgejo -mode http
 ```
 
 - **Image build:** the binary is produced by **GoReleaser** (`.goreleaser.yaml`)

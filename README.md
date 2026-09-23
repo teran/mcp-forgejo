@@ -108,14 +108,14 @@ go build -o mcp-forgejo ./cmd/mcp-forgejo
 
 ```bash
 FORGEJO_URL=https://git.example.com FORGEJO_TOKEN=<pat> \
-  ./mcp-forgejo --transport=stdio
+  ./mcp-forgejo -mode stdio
 ```
 
 ### Run as a remote sidecar (HTTP/SSE)
 
 ```bash
 FORGEJO_URL=https://git.example.com FORGEJO_TOKEN=<pat> \
-  LISTEN_ADDR=:8080 ./mcp-forgejo --transport=http-sse
+  LISTEN_ADDR=:8080 ./mcp-forgejo -mode http
 ```
 
 Or run the container image (built by **GoReleaser** — the `Dockerfile` only
@@ -127,7 +127,7 @@ docker build -t mcp-forgejo .
 docker run --rm -p 8080:8080 \
   -e FORGEJO_URL=https://git.example.com \
   -e FORGEJO_TOKEN=<pat> \
-  mcp-forgejo --transport=http-sse
+  mcp-forgejo -mode http
 ```
 
 ### Example: STDIO
@@ -144,11 +144,11 @@ export LOG_LEVEL=info                 # enable logging (writes to /tmp/mcp-forge
 export LOG_FILENAME=/tmp/mcp-forgejo.log
 export LOG_FORMAT=text                # or "json"
 
-./mcp-forgejo --transport=stdio
+./mcp-forgejo -mode stdio
 ```
 
-The transport flag may be omitted — **stdio is the default** when neither
-`--transport` nor `--transport=http-sse` is given.
+The `-mode` flag may be omitted — **stdio is the default** when neither
+`-mode` nor `-mode http` is given.
 
 ### Example: HTTP/SSE
 
@@ -164,7 +164,7 @@ export LISTEN_ADDR=:8080
 export LOG_LEVEL=info                 # optional in HTTP mode — defaults to "info" (to stdout)
 export LOG_FORMAT=text                # or "json"
 
-./mcp-forgejo --transport=http-sse
+./mcp-forgejo -mode http
 ```
 
 The client connects to the MCP **streamable HTTP** endpoint served at the

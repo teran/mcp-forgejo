@@ -45,7 +45,7 @@ func TestRunFlagParseError(t *testing.T) {
 func TestRunLoggingError(t *testing.T) {
 	setBaseEnv(t)
 	t.Setenv("LOG_LEVEL", "bogus")
-	if code := run([]string{"--transport", "stdio"}); code == 0 {
+	if code := run([]string{"-mode", "stdio"}); code == 0 {
 		t.Fatal("expected non-zero exit code for invalid log level")
 	}
 }
@@ -58,7 +58,7 @@ func TestRunBuildError(t *testing.T) {
 	}
 	defer func() { buildServerWithObserver = orig }()
 
-	if code := run([]string{"--transport", "stdio"}); code == 0 {
+	if code := run([]string{"-mode", "stdio"}); code == 0 {
 		t.Fatal("expected non-zero exit code for build error")
 	}
 }
@@ -69,7 +69,7 @@ func TestRunStdioSuccess(t *testing.T) {
 	runStdio = func(context.Context, *mcp.Server) error { return nil }
 	defer func() { runStdio = origRun }()
 
-	if code := run([]string{"--transport", "stdio"}); code != 0 {
+	if code := run([]string{"-mode", "stdio"}); code != 0 {
 		t.Fatalf("expected exit 0, got %d", code)
 	}
 }
@@ -80,7 +80,7 @@ func TestRunStdioError(t *testing.T) {
 	runStdio = func(context.Context, *mcp.Server) error { return errors.New("stdio failed") }
 	defer func() { runStdio = origRun }()
 
-	if code := run([]string{"--transport", "stdio"}); code == 0 {
+	if code := run([]string{"-mode", "stdio"}); code == 0 {
 		t.Fatal("expected non-zero exit for stdio failure")
 	}
 }
@@ -91,7 +91,7 @@ func TestRunHTTPSuccess(t *testing.T) {
 	runHTTPServer = func(context.Context, config.Config, *mcp.Server) error { return nil }
 	defer func() { runHTTPServer = origRun }()
 
-	if code := run([]string{"--transport", "http-sse"}); code != 0 {
+	if code := run([]string{"-mode", "http"}); code != 0 {
 		t.Fatalf("expected exit 0, got %d", code)
 	}
 }
@@ -102,12 +102,12 @@ func TestRunHTTPError(t *testing.T) {
 	runHTTPServer = func(context.Context, config.Config, *mcp.Server) error { return errors.New("http failed") }
 	defer func() { runHTTPServer = origRun }()
 
-	if code := run([]string{"--transport", "http-sse"}); code == 0 {
+	if code := run([]string{"-mode", "http"}); code == 0 {
 		t.Fatal("expected non-zero exit for http failure")
 	}
 }
 
-// TestRunHTTPInvokesObservability verifies that in http-sse mode the
+// TestRunHTTPInvokesObservability verifies that in http mode the
 // composition root starts the observability server via the runObservability
 // seam and passes it cfg.InternalAddr.
 func TestRunHTTPInvokesObservability(t *testing.T) {
@@ -127,11 +127,11 @@ func TestRunHTTPInvokesObservability(t *testing.T) {
 		runObservability = origObs
 	}()
 
-	if code := run([]string{"--transport", "http-sse"}); code != 0 {
+	if code := run([]string{"-mode", "http"}); code != 0 {
 		t.Fatalf("expected exit 0, got %d", code)
 	}
 	if !called {
-		t.Fatal("expected runObservability to be invoked in http-sse mode")
+		t.Fatal("expected runObservability to be invoked in http mode")
 	}
 	if gotAddr != ":8081" {
 		t.Fatalf("runObservability received InternalAddr = %q, want :8081", gotAddr)
@@ -155,7 +155,7 @@ func TestRunStdioDoesNotInvokeObservability(t *testing.T) {
 		runObservability = origObs
 	}()
 
-	if code := run([]string{"--transport", "stdio"}); code != 0 {
+	if code := run([]string{"-mode", "stdio"}); code != 0 {
 		t.Fatalf("expected exit 0, got %d", code)
 	}
 	if called {
@@ -164,18 +164,18 @@ func TestRunStdioDoesNotInvokeObservability(t *testing.T) {
 }
 
 // TestRunStdioRequiresToken verifies that in stdio mode FORGEJO_TOKEN is
-// required: running with --transport stdio and no FORGEJO_TOKEN must fail.
+// required: running with -mode stdio and no FORGEJO_TOKEN must fail.
 func TestRunStdioRequiresToken(t *testing.T) {
 	t.Setenv("FORGEJO_URL", "https://git.example.dev")
 	t.Setenv("FORGEJO_TOKEN", "")
 	t.Setenv("LOG_FILENAME", t.TempDir()+"/log.log")
 
-	if code := run([]string{"--transport", "stdio"}); code == 0 {
+	if code := run([]string{"-mode", "stdio"}); code == 0 {
 		t.Fatal("expected non-zero exit for stdio without FORGEJO_TOKEN")
 	}
 }
 
-// TestRunHTTPSuccessWithoutToken verifies that in http-sse mode FORGEJO_TOKEN
+// TestRunHTTPSuccessWithoutToken verifies that in http mode FORGEJO_TOKEN
 // is NOT required at startup: the token arrives per-request from the Bearer
 // header, so the server must start successfully without it.
 func TestRunHTTPSuccessWithoutToken(t *testing.T) {
@@ -192,14 +192,14 @@ func TestRunHTTPSuccessWithoutToken(t *testing.T) {
 		runObservability = origObs
 	}()
 
-	if code := run([]string{"--transport", "http-sse"}); code != 0 {
-		t.Fatalf("expected exit 0 for http-sse without FORGEJO_TOKEN, got %d", code)
+	if code := run([]string{"-mode", "http"}); code != 0 {
+		t.Fatalf("expected exit 0 for http mode without FORGEJO_TOKEN, got %d", code)
 	}
 }
 
 func TestRunUnknownTransport(t *testing.T) {
 	setBaseEnv(t)
-	if code := run([]string{"--transport", "unknown"}); code == 0 {
+	if code := run([]string{"-mode", "unknown"}); code == 0 {
 		t.Fatal("expected non-zero exit for unknown transport")
 	}
 }
@@ -213,7 +213,7 @@ func TestRunStdioClosesLogFile(t *testing.T) {
 	runStdio = func(context.Context, *mcp.Server) error { return nil }
 	defer func() { runStdio = origRun }()
 
-	if code := run([]string{"--transport", "stdio"}); code != 0 {
+	if code := run([]string{"-mode", "stdio"}); code != 0 {
 		t.Fatalf("expected exit 0, got %d", code)
 	}
 }
@@ -240,7 +240,7 @@ func TestRunPassesLoggerToBuildWhenEnabled(t *testing.T) {
 		runStdio = origRun
 	}()
 
-	if code := run([]string{"--transport", "stdio"}); code != 0 {
+	if code := run([]string{"-mode", "stdio"}); code != 0 {
 		t.Fatalf("expected exit 0, got %d", code)
 	}
 
@@ -274,7 +274,7 @@ func TestRunPassesLoggerToBuildWhenDisabled(t *testing.T) {
 		runStdio = origRun
 	}()
 
-	if code := run([]string{"--transport", "stdio"}); code != 0 {
+	if code := run([]string{"-mode", "stdio"}); code != 0 {
 		t.Fatalf("expected exit 0, got %d", code)
 	}
 
@@ -351,7 +351,7 @@ func TestRunEmitsBannerFirstWhenLogLevelSet(t *testing.T) {
 	out, restore := captureStdout(t)
 	defer restore()
 
-	if code := run([]string{"--transport", "http-sse"}); code != 0 {
+	if code := run([]string{"-mode", "http"}); code != 0 {
 		t.Fatalf("expected exit 0, got %d", code)
 	}
 	output := out()
@@ -362,7 +362,7 @@ func TestRunEmitsBannerFirstWhenLogLevelSet(t *testing.T) {
 		t.Fatalf("output %q does not contain startup banner %q", output, wantBanner)
 	}
 
-	const startupLine = "starting mcp-forgejo in http-sse mode"
+	const startupLine = "starting mcp-forgejo in http mode"
 	if !strings.Contains(output, startupLine) {
 		t.Fatalf("output %q does not contain transport startup line %q", output, startupLine)
 	}
@@ -397,7 +397,7 @@ func TestRunHTTPEmitsBannerEvenWhenLogLevelUnset(t *testing.T) {
 	out, restore := captureStdout(t)
 	defer restore()
 
-	if code := run([]string{"--transport", "http-sse"}); code != 0 {
+	if code := run([]string{"-mode", "http"}); code != 0 {
 		t.Fatalf("expected exit 0, got %d", code)
 	}
 	output := out()
@@ -405,7 +405,7 @@ func TestRunHTTPEmitsBannerEvenWhenLogLevelUnset(t *testing.T) {
 	wantBanner := "Starting " + appName + "/" + appVersion +
 		" (commit: " + appCommitHash + "; built at " + appTimestamp + ")"
 	if !strings.Contains(output, wantBanner) {
-		t.Fatalf("output %q does not contain startup banner %q when LOG_LEVEL unset in http-sse mode", output, wantBanner)
+		t.Fatalf("output %q does not contain startup banner %q when LOG_LEVEL unset in http mode", output, wantBanner)
 	}
 
 	lines := strings.Split(strings.TrimRight(output, "\n"), "\n")
@@ -429,7 +429,7 @@ func TestRunNoBannerWhenLogLevelUnsetStdio(t *testing.T) {
 	runStdio = func(context.Context, *mcp.Server) error { return nil }
 	defer func() { runStdio = origRun }()
 
-	if code := run([]string{"--transport", "stdio"}); code != 0 {
+	if code := run([]string{"-mode", "stdio"}); code != 0 {
 		t.Fatalf("expected exit 0, got %d", code)
 	}
 
@@ -439,26 +439,26 @@ func TestRunNoBannerWhenLogLevelUnsetStdio(t *testing.T) {
 }
 
 // TestEffectiveLogLevel verifies the L02/M06 launch-mode logging default:
-// HTTP/SSE mode always logs (default "info", overridable via LOG_LEVEL);
+// HTTP mode always logs (default "info", overridable via LOG_LEVEL);
 // stdio mode logs only when LOG_LEVEL is set (empty disables it).
 func TestEffectiveLogLevel(t *testing.T) {
 	tests := []struct {
 		name       string
-		transport  string
+		mode       string
 		configured string
 		want       string
 	}{
-		{name: "http defaults to info", transport: "http-sse", configured: "", want: "info"},
-		{name: "http honors LOG_LEVEL", transport: "http-sse", configured: "debug", want: "debug"},
-		{name: "http honors error level", transport: "http-sse", configured: "error", want: "error"},
-		{name: "stdio empty disables", transport: "stdio", configured: "", want: ""},
-		{name: "stdio honors LOG_LEVEL", transport: "stdio", configured: "info", want: "info"},
-		{name: "unknown transport treated as stdio", transport: "bogus", configured: "", want: ""},
+		{name: "http defaults to info", mode: "http", configured: "", want: "info"},
+		{name: "http honors LOG_LEVEL", mode: "http", configured: "debug", want: "debug"},
+		{name: "http honors error level", mode: "http", configured: "error", want: "error"},
+		{name: "stdio empty disables", mode: "stdio", configured: "", want: ""},
+		{name: "stdio honors LOG_LEVEL", mode: "stdio", configured: "info", want: "info"},
+		{name: "unknown mode treated as stdio", mode: "bogus", configured: "", want: ""},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			if got := effectiveLogLevel(tt.transport, tt.configured); got != tt.want {
-				t.Errorf("effectiveLogLevel(%q, %q) = %q, want %q", tt.transport, tt.configured, got, tt.want)
+			if got := effectiveLogLevel(tt.mode, tt.configured); got != tt.want {
+				t.Errorf("effectiveLogLevel(%q, %q) = %q, want %q", tt.mode, tt.configured, got, tt.want)
 			}
 		})
 	}

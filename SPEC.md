@@ -99,7 +99,7 @@ Transport selection happens at startup, in the composition root:
 - **stdio driver** (`server/stdio.go`) — connects the SDK server to `os.Stdin`/`os.Stdout`. Logging sink = **file** (`LOG_FILENAME`, chmod 600).
 - **http/sse driver** (`server/http.go`) — serves the MCP HTTP/SSE endpoint on `LISTEN_ADDR`. Logging sink = **stdout** (12-factor).
 
-A single launch-mode flag selects the driver (e.g. `--transport=stdio|http-sse`, defaulting sensibly per how it is launched). Both drivers share the same `Server` construction, tools, and application layer.
+A single launch-mode flag selects the driver (`-mode stdio|http`, defaulting to `stdio` per M6). Both drivers share the same `Server` construction, tools, and application layer.
 
 ### 4.4 Error handling (taxonomy → MCP error codes)
 
@@ -281,7 +281,7 @@ All delete tools are **destructive** (S12 / HITL) and **not idempotent** (deleti
 Uses **`logrus`** (`github.com/sirupsen/logrus`).
 
 - **L1 — channel per transport:** HTTP/SSE → **stdout** (12-factor); stdio → **file** (default `/tmp/mcp-forgejo.log`, **chmod 600**), **never** stdout (stdout is the MCP protocol channel).
-- **L2 — mode-dependent enablement (M6):** in **HTTP/SSE** mode (`--transport=http-sse`) logging is **always enabled**, default level **`info`** (overridable via `LOG_LEVEL`). In **stdio** mode (default) logging is **enabled only when `LOG_LEVEL` is set** — unset ⇒ no logs.
+- **L2 — mode-dependent enablement (M6):** in **HTTP/SSE** mode (`-mode http`) logging is **always enabled**, default level **`info`** (overridable via `LOG_LEVEL`). In **stdio** mode (default) logging is **enabled only when `LOG_LEVEL` is set** — unset ⇒ no logs.
 - **L3 — override path:** `LOG_FILENAME` (default `/tmp/mcp-forgejo.log`).
 - **L4 — format:** default `text` (logrus text, **full absolute timestamp**); `LOG_FORMAT=json` → JSON.
 - **L5 / S2 / N2 — no secrets:** `FORGEJO_TOKEN` and any credentials/passwords are **never** logged; redaction helpers strip them from any log line or error before emission.
@@ -329,7 +329,7 @@ stdout and has no HTTP listener).
   The observer is wired from the composition root (`cmd/mcp-forgejo/main.go`) via
   `server.BuildWithObserver`.
 - **Wiring (O4/N32):** the observability listener is started in `cmd/mcp-forgejo/main.go`
-  only in the `http-sse` transport branch, alongside the MCP HTTP server, and shut down
+  only in the `http` mode branch, alongside the MCP HTTP server, and shut down
   gracefully on context cancellation (graceful 5 s shutdown in `observability.Run`). In
   stdio mode it is never started.
 
