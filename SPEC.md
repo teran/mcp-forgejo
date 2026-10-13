@@ -162,12 +162,12 @@ All tools target the **closed domain** of the configured Forgejo instance (`open
 
 **Common request parameters:** `owner`, `repo`, `ref`/`branch`, pagination `page` (1-based) + `limit`. **Common errors:** 401, 403, 404, 422, 409, 423. Content in file operations is base64-encoded over the wire; bodies carry commit metadata (message, branch, `new_branch`, author).
 
-> **Status.** §6 documents the **implemented** tool surface: **all 51 tools** below
+> **Status.** §6 documents the **implemented** tool surface: **all 52 tools** below
 > are registered in the running server via `mcp.AddTool(...)` in `server/server.go`
 > (the single tool registry, §4.2) and are grouped **read → write/update → delete**
 > (S03). There is no separate "target" vs "implemented" split — what is listed here
 > is what the server actually exposes, over both stdio and HTTP/SSE. The tool count
-> is verified from the registry: 19 read + 22 write/update + 10 delete = **51**.
+> is verified from the registry: 19 read + 23 write/update + 10 delete = **52**.
 
 ### 6.0 Metadata conventions
 
@@ -226,7 +226,7 @@ Representative JSON-Schema-style metadata block (shown for one tool; all tools c
 | 18 | `forgejo_user_get` | Get user | `userGet`, `userGetCurrent` | Return a user by username; when `username` is omitted, return the current authenticated user. Read-only. |
 | 19 | `forgejo_user_list` | Search users | `userSearch` | Search Forgejo users by a query string. Read-only. |
 
-### 6.2 WRITE / UPDATE — `readOnlyHint: false`, `destructiveHint: false` (22 tools)
+### 6.2 WRITE / UPDATE — `readOnlyHint: false`, `destructiveHint: false` (23 tools)
 
 `idempotentHint: true` is set only where repeating with identical args has no extra effect; `false` where every call records a new resource/commit.
 
@@ -235,25 +235,26 @@ Representative JSON-Schema-style metadata block (shown for one tool; all tools c
 | 20 | `forgejo_repo_create` | Create repository | `createCurrentUserRepo`, `orgCreateRepo` | false | Create a repo (`name`, optional `owner`/org, `private`, `auto_init`, plus template fields). Creating a name that already exists **conflicts** — not idempotent. |
 | 21 | `forgejo_repo_update` | Update repository | `repoEdit` | true | Edit a repo's description, website, default branch or visibility. Repeating the same edit is idempotent. |
 | 22 | `forgejo_repo_fork` | Fork repository | `repoCreateFork` | false | Fork a repository into an organization or user namespace. Not idempotent. |
-| 23 | `forgejo_org_create` | Create organization | `orgCreate` | false | Create an organization (`username`, optional `description`, `full_name`). Creating a name that already exists **conflicts** — not idempotent. |
-| 24 | `forgejo_file_write` | Write/update file | `repoCreateFile`, `repoUpdateFile` | false | **Single call covering create AND update**: write `content` (text, base64-encoded on the wire) at `path`+`branch` with a commit `message`. Creates if absent, updates if present. Not idempotent: every call records a new commit. |
-| 25 | `forgejo_file_write_many` | Write multiple files | `repoChangeFiles` | false | Modify several files in **one commit** (multi-file single commit) at a branch with a commit message. |
-| 26 | `forgejo_branch_create` | Create branch | `repoCreateBranch` | false | Create a branch from an existing ref. Creating an existing branch **conflicts**. |
-| 27 | `forgejo_issue_create` | Create issue | `issueCreateIssue` | false | Create an issue with `title`, `body`, `labels`, `milestone`. |
-| 28 | `forgejo_issue_update` | Update/close/reopen issue | `issueEditIssue` | true | **Single tool handles edit + close + reopen**: update fields; set `state` to `open`/`closed`. Repeating the same edit is idempotent. |
-| 29 | `forgejo_issue_comment_add` | Add issue comment | `issueCreateComment` | false | Append a comment to an issue. Each call adds a new comment. |
-| 30 | `forgejo_issue_set_labels` | Set issue labels | `issueReplaceLabels` | true | Replace the exact set of labels on an issue by their IDs. Repeating the same set is idempotent. |
-| 31 | `forgejo_pull_create` | Create pull request | `repoCreatePullRequest` | false | Open a PR from `head`→`base` with `title`/`body`. |
-| 32 | `forgejo_pull_update` | Update/close/reopen PR | `repoEditPullRequest` | true | **Single tool handles edit + close + reopen**: update fields; set `state`. |
-| 33 | `forgejo_pull_merge` | Merge pull request | `repoMergePullRequest`, `repoPullRequestIsMerged` | false | Merge a PR with a `merge`/`squash`/`rebase` method and report the result (merged vs already-merged). |
-| 34 | `forgejo_pull_review` | Review pull request | `repoCreatePullReview`, `repoSubmitPullReview` | false | **Create AND submit** a PR review (`approve`/`comment`/`request_changes`) in one call. |
-| 35 | `forgejo_release_create` | Create release | `repoCreateRelease` | false | Create a release for an existing `tag` with `title`/`notes`. |
-| 36 | `forgejo_release_asset_upload` | Upload release asset | `repoCreateReleaseAttachment` | false | Upload content (base64) as a named file attachment to a release. Not idempotent: each call creates a new asset. |
-| 37 | `forgejo_tag_create` | Create tag | `repoCreateTag` | false | Create a git tag pointing at a ref with an optional message. Creating an existing tag **conflicts**. |
-| 38 | `forgejo_milestone_create` | Create milestone | `issueCreateMilestone` | false | Create a milestone with a title, description and due date. Creating an existing title **conflicts**. |
-| 39 | `forgejo_milestone_update` | Update milestone | `issueEditMilestone` | true | Edit a milestone's title, description, state or due date. Repeating the same edit is idempotent. |
-| 40 | `forgejo_label_create` | Create label | `issueCreateLabel` | false | Create a label with a name, color and description. Creating an existing name **conflicts**. |
-| 41 | `forgejo_label_update` | Update label | `issueEditLabel` | true | Edit a label's name, color or description. Repeating the same edit is idempotent. |
+| 23 | `forgejo_repo_migrate` | Migrate repository | `repoMigrate` | false | Migrate a remote git repository (e.g. from GitHub) into Forgejo. Provide `clone_addr` (source URL) and `repo_name`; optional `repo_owner`, `service` (enum: github, git, gitea, gitlab, gogs, onedev, gitbucket, codebase, forgejo, pagure; default github), `auth_username`/`auth_token` (source credentials), `mirror`/`mirror_interval`, `private`, `description`, and per-content flags `issues`/`labels`/`milestones`/`pull_requests`/`releases`/`wiki`/`lfs`. One-time import unless `mirror: true`. Creating a name that already exists **conflicts** — not idempotent. The source `auth_token` is a secret and is **never** returned or logged (S02). |
+| 24 | `forgejo_org_create` | Create organization | `orgCreate` | false | Create an organization (`username`, optional `description`, `full_name`). Creating a name that already exists **conflicts** — not idempotent. |
+| 25 | `forgejo_file_write` | Write/update file | `repoCreateFile`, `repoUpdateFile` | false | **Single call covering create AND update**: write `content` (text, base64-encoded on the wire) at `path`+`branch` with a commit `message`. Creates if absent, updates if present. Not idempotent: every call records a new commit. |
+| 26 | `forgejo_file_write_many` | Write multiple files | `repoChangeFiles` | false | Modify several files in **one commit** (multi-file single commit) at a branch with a commit message. |
+| 27 | `forgejo_branch_create` | Create branch | `repoCreateBranch` | false | Create a branch from an existing ref. Creating an existing branch **conflicts**. |
+| 28 | `forgejo_issue_create` | Create issue | `issueCreateIssue` | false | Create an issue with `title`, `body`, `labels`, `milestone`. |
+| 29 | `forgejo_issue_update` | Update/close/reopen issue | `issueEditIssue` | true | **Single tool handles edit + close + reopen**: update fields; set `state` to `open`/`closed`. Repeating the same edit is idempotent. |
+| 30 | `forgejo_issue_comment_add` | Add issue comment | `issueCreateComment` | false | Append a comment to an issue. Each call adds a new comment. |
+| 31 | `forgejo_issue_set_labels` | Set issue labels | `issueReplaceLabels` | true | Replace the exact set of labels on an issue by their IDs. Repeating the same set is idempotent. |
+| 32 | `forgejo_pull_create` | Create pull request | `repoCreatePullRequest` | false | Open a PR from `head`→`base` with `title`/`body`. |
+| 33 | `forgejo_pull_update` | Update/close/reopen PR | `repoEditPullRequest` | true | **Single tool handles edit + close + reopen**: update fields; set `state`. |
+| 34 | `forgejo_pull_merge` | Merge pull request | `repoMergePullRequest`, `repoPullRequestIsMerged` | false | Merge a PR with a `merge`/`squash`/`rebase` method and report the result (merged vs already-merged). |
+| 35 | `forgejo_pull_review` | Review pull request | `repoCreatePullReview`, `repoSubmitPullReview` | false | **Create AND submit** a PR review (`approve`/`comment`/`request_changes`) in one call. |
+| 36 | `forgejo_release_create` | Create release | `repoCreateRelease` | false | Create a release for an existing `tag` with `title`/`notes`. |
+| 37 | `forgejo_release_asset_upload` | Upload release asset | `repoCreateReleaseAttachment` | false | Upload content (base64) as a named file attachment to a release. Not idempotent: each call creates a new asset. |
+| 38 | `forgejo_tag_create` | Create tag | `repoCreateTag` | false | Create a git tag pointing at a ref with an optional message. Creating an existing tag **conflicts**. |
+| 39 | `forgejo_milestone_create` | Create milestone | `issueCreateMilestone` | false | Create a milestone with a title, description and due date. Creating an existing title **conflicts**. |
+| 40 | `forgejo_milestone_update` | Update milestone | `issueEditMilestone` | true | Edit a milestone's title, description, state or due date. Repeating the same edit is idempotent. |
+| 41 | `forgejo_label_create` | Create label | `issueCreateLabel` | false | Create a label with a name, color and description. Creating an existing name **conflicts**. |
+| 42 | `forgejo_label_update` | Update label | `issueEditLabel` | true | Edit a label's name, color or description. Repeating the same edit is idempotent. |
 
 ### 6.3 DELETE — `readOnlyHint: false`, `destructiveHint: true` (10 tools)
 
@@ -261,16 +262,16 @@ All delete tools are **destructive** (S12 / HITL) and **not idempotent** (deleti
 
 | # | Tool | Title | Forgejo operationId(s) | Instructions (abridged) |
 |---|------|-------|------------------------|--------------------------|
-| 42 | `forgejo_file_delete` | Delete file | `repoDeleteFile` | Delete a file at `path`+`branch` with a commit `message`. **Destructive** — confirm before use. |
-| 43 | `forgejo_branch_delete` | Delete branch | `repoDeleteBranch` | Delete a branch. **Destructive** — confirm before use; will not delete the default branch. |
-| 44 | `forgejo_issue_delete` | Delete issue | `issueDelete` | Permanently delete an issue. **Destructive** — confirm before use. |
-| 45 | `forgejo_comment_delete` | Delete comment | `issueDeleteComment` | Delete an issue/PR comment. **Destructive** — confirm before use. |
-| 46 | `forgejo_release_delete` | Delete release | `repoDeleteRelease` | Delete a release (tag remains). **Destructive** — confirm before use. |
-| 47 | `forgejo_repo_delete` | Delete repository | `repoDelete` | **Permanently delete a repository.** Highly destructive — instructions require explicit user confirmation before invoking. |
-| 48 | `forgejo_org_delete` | Delete organization | `orgDelete` | **Permanently delete an organization.** Highly destructive — confirm before use. |
-| 49 | `forgejo_tag_delete` | Delete tag | `repoDeleteTag` | Delete a git tag by its name. **Destructive** — confirm before use. |
-| 50 | `forgejo_milestone_delete` | Delete milestone | `issueDeleteMilestone` | Delete a milestone by its ID. **Destructive** — confirm before use. |
-| 51 | `forgejo_label_delete` | Delete label | `issueDeleteLabel` | Delete a label by its ID. **Destructive** — confirm before use. |
+| 43 | `forgejo_file_delete` | Delete file | `repoDeleteFile` | Delete a file at `path`+`branch` with a commit `message`. **Destructive** — confirm before use. |
+| 44 | `forgejo_branch_delete` | Delete branch | `repoDeleteBranch` | Delete a branch. **Destructive** — confirm before use; will not delete the default branch. |
+| 45 | `forgejo_issue_delete` | Delete issue | `issueDelete` | Permanently delete an issue. **Destructive** — confirm before use. |
+| 46 | `forgejo_comment_delete` | Delete comment | `issueDeleteComment` | Delete an issue/PR comment. **Destructive** — confirm before use. |
+| 47 | `forgejo_release_delete` | Delete release | `repoDeleteRelease` | Delete a release (tag remains). **Destructive** — confirm before use. |
+| 48 | `forgejo_repo_delete` | Delete repository | `repoDelete` | **Permanently delete a repository.** Highly destructive — instructions require explicit user confirmation before invoking. |
+| 49 | `forgejo_org_delete` | Delete organization | `orgDelete` | **Permanently delete an organization.** Highly destructive — confirm before use. |
+| 50 | `forgejo_tag_delete` | Delete tag | `repoDeleteTag` | Delete a git tag by its name. **Destructive** — confirm before use. |
+| 51 | `forgejo_milestone_delete` | Delete milestone | `issueDeleteMilestone` | Delete a milestone by its ID. **Destructive** — confirm before use. |
+| 52 | `forgejo_label_delete` | Delete label | `issueDeleteLabel` | Delete a label by its ID. **Destructive** — confirm before use. |
 
 > **Data-hygiene (S02):** none of the above tools accept or return a token/credential. Auth is injected server-side (per-request Bearer token over HTTP, `FORGEJO_TOKEN` over stdio, M06); outputs never contain it.
 

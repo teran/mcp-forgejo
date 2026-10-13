@@ -131,6 +131,33 @@ type UpdateRepositoryInput struct {
 	Private       *bool  `json:"private,omitempty"`
 }
 
+// MigrateRepositoryInput carries the fields of a remote repository migration
+// (repoMigrate). CloneAddr and RepoName are required. Optional booleans are
+// *bool (omitempty) so an omitted value lets Forgejo apply its server-side
+// default (mirrors UpdateRepositoryInput.Private). AuthToken is the source git
+// provider PAT — a secret distinct from the Forgejo PAT — and must never
+// surface in an error or log (S02).
+type MigrateRepositoryInput struct {
+	CloneAddr      string `json:"clone_addr"`
+	RepoName       string `json:"repo_name"`
+	RepoOwner      string `json:"repo_owner,omitempty"`
+	Service        string `json:"service,omitempty"`
+	AuthUsername   string `json:"auth_username,omitempty"`
+	AuthToken      string `json:"auth_token,omitempty"`
+	Mirror         *bool  `json:"mirror,omitempty"`
+	MirrorInterval string `json:"mirror_interval,omitempty"`
+	Private        *bool  `json:"private,omitempty"`
+	Description    string `json:"description,omitempty"`
+	Issues         *bool  `json:"issues,omitempty"`
+	Labels         *bool  `json:"labels,omitempty"`
+	Milestones     *bool  `json:"milestones,omitempty"`
+	PullRequests   *bool  `json:"pull_requests,omitempty"`
+	Releases       *bool  `json:"releases,omitempty"`
+	Wiki           *bool  `json:"wiki,omitempty"`
+	LFS            *bool  `json:"lfs,omitempty"`
+	LFSEndpoint    string `json:"lfs_endpoint,omitempty"`
+}
+
 // FileEntry is a single entry (file or directory) in a repository listing.
 type FileEntry struct {
 	Name        string `json:"name"`
@@ -716,6 +743,14 @@ type RepositoryForkService interface {
 type RepositoryUpdateService interface {
 	// UpdateRepository edits a repository (description/website/default_branch/private).
 	UpdateRepository(ctx context.Context, owner, repo string, in UpdateRepositoryInput) (Repository, error)
+}
+
+// RepositoryMigrateService migrates a remote git repository into Forgejo.
+type RepositoryMigrateService interface {
+	// MigrateRepository migrates a remote repository (e.g. from GitHub) into
+	// Forgejo (repoMigrate). Not idempotent: a second migrate of the same name
+	// conflicts.
+	MigrateRepository(ctx context.Context, in MigrateRepositoryInput) (Repository, error)
 }
 
 // MilestoneService lists the milestones of a repository.

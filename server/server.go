@@ -797,6 +797,35 @@ func registerBatchTTools(s *mcp.Server, client *forgejo.Client) {
 	})
 
 	mcp.AddTool(s, &mcp.Tool{
+		Name:        "forgejo_repo_migrate",
+		Title:       "Migrate repository",
+		Description: "Migrate a remote git repository (e.g. from GitHub) into Forgejo using its clone URL. Not idempotent: migrating a name that already exists conflicts. The source provider access token (auth_token) is accepted and redacted.",
+		Annotations: writeAnnotations("Migrate repository", false),
+	}, func(ctx context.Context, _ *mcp.CallToolRequest, in repoMigrateIn) (*mcp.CallToolResult, domain.Repository, error) {
+		repo, err := application.MigrateRepository(ctx, client, domain.MigrateRepositoryInput{
+			CloneAddr:      in.CloneAddr,
+			RepoName:       in.RepoName,
+			RepoOwner:      in.RepoOwner,
+			Service:        in.Service,
+			AuthUsername:   in.AuthUsername,
+			AuthToken:      in.AuthToken,
+			Mirror:         in.Mirror,
+			MirrorInterval: in.MirrorInterval,
+			Private:        in.Private,
+			Description:    in.Description,
+			Issues:         in.Issues,
+			Labels:         in.Labels,
+			Milestones:     in.Milestones,
+			PullRequests:   in.PullRequests,
+			Releases:       in.Releases,
+			Wiki:           in.Wiki,
+			LFS:            in.LFS,
+			LFSEndpoint:    in.LFSEndpoint,
+		})
+		return nil, repo, err
+	})
+
+	mcp.AddTool(s, &mcp.Tool{
 		Name:        "forgejo_tag_delete",
 		Title:       "Delete tag",
 		Description: "Delete a git tag by its name. Destructive — confirm before use.",
@@ -841,6 +870,27 @@ type repoUpdateIn struct {
 	Website       string `json:"website,omitempty" jsonschema:"New repository website"`
 	DefaultBranch string `json:"default_branch,omitempty" jsonschema:"New default branch"`
 	Private       *bool  `json:"private,omitempty" jsonschema:"Set the repository visibility (private/public)"`
+}
+
+type repoMigrateIn struct {
+	CloneAddr      string `json:"clone_addr" jsonschema:"Full git clone URL of the source repository to migrate (required)"`
+	RepoName       string `json:"repo_name" jsonschema:"Name for the migrated repository in Forgejo (required)"`
+	RepoOwner      string `json:"repo_owner,omitempty" jsonschema:"Owner/namespace to migrate into; empty uses the current user"`
+	Service        string `json:"service,omitempty" jsonschema:"Source git provider (github, git, gitea, gitlab, gogs, onedev, gitbucket, codebase, forgejo, pagure); empty defaults to github"`
+	AuthUsername   string `json:"auth_username,omitempty" jsonschema:"Username for the source provider, if required"`
+	AuthToken      string `json:"auth_token,omitempty" jsonschema:"Access token for the source provider (redacted; never logged)"`
+	Mirror         *bool  `json:"mirror,omitempty" jsonschema:"Mirror the repository (keep it in sync)"`
+	MirrorInterval string `json:"mirror_interval,omitempty" jsonschema:"How often to sync the mirror (e.g. 8h)"`
+	Private        *bool  `json:"private,omitempty" jsonschema:"Make the migrated repository private"`
+	Description    string `json:"description,omitempty" jsonschema:"Description for the migrated repository"`
+	Issues         *bool  `json:"issues,omitempty" jsonschema:"Migrate issues"`
+	Labels         *bool  `json:"labels,omitempty" jsonschema:"Migrate labels"`
+	Milestones     *bool  `json:"milestones,omitempty" jsonschema:"Migrate milestones"`
+	PullRequests   *bool  `json:"pull_requests,omitempty" jsonschema:"Migrate pull requests"`
+	Releases       *bool  `json:"releases,omitempty" jsonschema:"Migrate releases"`
+	Wiki           *bool  `json:"wiki,omitempty" jsonschema:"Migrate the wiki"`
+	LFS            *bool  `json:"lfs,omitempty" jsonschema:"Migrate LFS objects"`
+	LFSEndpoint    string `json:"lfs_endpoint,omitempty" jsonschema:"LFS endpoint of the source repository"`
 }
 
 // registerBatchMTools registers the Batch M tools (SPEC §6): milestone and

@@ -15,6 +15,7 @@ import (
 	"context"
 	"encoding/base64"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"net/url"
@@ -810,6 +811,36 @@ func (c *Client) UpdateRepository(ctx context.Context, owner, repo string, in do
 	var out domain.Repository
 	err := c.doJSON(ctx, http.MethodPatch, path, in, &out)
 	return out, err
+}
+
+// MigrateRepository implements domain.RepositoryMigrateService (repoMigrate). It
+// migrates a remote git repository (e.g. from GitHub) into Forgejo by POSTing
+// the MigrateRepoOptions body to /api/v1/repos/migrate; success is 201. The
+// source git PAT (in.AuthToken) is a secret distinct from the Forgejo PAT, so
+// the surfaced error is additionally scrubbed of it (S02) because mapStatusError
+// only redacts c.token.
+func (c *Client) MigrateRepository(ctx context.Context, in domain.MigrateRepositoryInput) (domain.Repository, error) {
+	var out domain.Repository
+	err := c.doJSON(ctx, http.MethodPost, "/api/v1/repos/migrate", in, &out)
+	if err != nil {
+		return domain.Repository{}, redactSourceToken(err, in.AuthToken)
+	}
+	return out, nil
+}
+
+// redactSourceToken scrubs a source-provider secret (the auth_token PAT) from a
+// surfaced error while preserving its Kind. mapStatusError only redacts the
+// Forgejo PAT, so this prevents the source PAT from leaking in an error/log (S02).
+func redactSourceToken(err error, secret string) error {
+	if err == nil || secret == "" {
+		return err
+	}
+	var fe *domain.ForgejoError
+	if errors.As(err, &fe) {
+		fe.Message = domain.Redact(fe.Message, secret)
+		return fe
+	}
+	return errors.New(domain.Redact(err.Error(), secret))
 }
 
 // ListMilestones implements domain.MilestoneService (issueGetMilestonesList).
