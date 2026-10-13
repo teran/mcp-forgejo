@@ -35,14 +35,21 @@ jobs:
         # CDN failure can serve wrong/corrupt content and break the lint job.
         # Building from source guarantees a binary compiled with the CI Go 1.27
         # toolchain and drops the checksum dependency on a downloaded artifact.
-        # The version is pinned (v2.13.2) so the binary supports go 1.27 modules
+        # The version is pinned (v2.14.0) so the binary supports go 1.27 modules
         # and does not change spontaneously. Note the `/v2` in the module path:
         # golangci-lint v2 uses a major-version module path, so without it
         # `go install` cannot resolve the tag. actions/setup-go@v5 already puts
         # $(go env GOPATH)/bin on PATH, so the `golangci-lint` binary is
         # available to the subsequent `make lint` step.
+        #
+        # v2.13.2 was bumped to v2.14.0 because Go 1.27.x (>= 1.27.1) writes
+        # compiler export-data version 5, which the x/tools bundled in v2.13.2
+        # (max version 4) cannot decode: golangci-lint then fails every package
+        # with "could not import internal/goarch ... export data version 5 is
+        # greater than maximum supported version 4" (typecheck, exit 2).
+        # v2.14.0 bundles x/tools v0.50.0, which reads export-data version 5.
         run: |
-          go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@v2.13.2
+          go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@v2.14.0
 
       - name: Lint (make lint)
         # `make lint` => golangci-lint run ./... && go vet ./... (R07/N31: CI
@@ -109,14 +116,20 @@ jobs:
           go-version: ${{ env.GO_VERSION }}
           cache: true
 
-      # Install gosec from source with the repo's Go toolchain (>= 1.27.1)
-      # instead of the securego/gosec container action, which bundles an older
-      # Go (1.27.0) that cannot load a module requiring go >= 1.27.1.
-      - name: Install gosec
-        run: go install github.com/securego/gosec/v2/cmd/gosec@latest
+      # gosec is run through golangci-lint (pinned, v2.14.0) because its bundled
+      # golang.org/x/tools supports Go 1.27's export-data format (version 5),
+      # whereas `go install gosec@latest` (v2.29.0, x/tools v0.49.0) cannot decode
+      # it and fails every package with "export data version 5 is greater than
+      # maximum supported version 4" (exit 1, Issues: 0). The golangci-lint gosec
+      # linter is the same gosec rule engine; `--enable-only` runs it alone. The
+      # repo's .golangci.yml excludes gosec for _test.go, matching standalone
+      # gosec's default of not scanning test files. Findings MUST be fixed, never
+      # suppressed (S05/N02GO).
+      - name: Install golangci-lint (pinned, supports Go 1.27)
+        run: go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@v2.14.0
 
       - name: Run gosec (findings MUST be fixed, never suppressed)
-        run: gosec ./...
+        run: golangci-lint run --enable-only=gosec ./...
 
   # ---- Secret scan over git history (N28/C03): findings MUST be fixed ----
   # Scans the full git history (not just the working tree) for accidentally
