@@ -373,3 +373,28 @@ func (s *FullSuite) TestWriteRepoCreateEmptyName() {
 	t := s.T()
 	s.callErr(t, "forgejo_repo_create", map[string]any{"name": ""})
 }
+
+// TestWriteRepoMigrate exercises forgejo_repo_migrate (write tool #23). It is
+// hermetic: it invokes the tool through the MCP protocol and asserts the
+// expected outcome deterministically. The test container's Forgejo is started
+// with the default SSRF protection, which rejects migration from localhost
+// ("You can not import from disallowed hosts."), so a real in-instance
+// migration cannot succeed here. Instead we assert that Forgejo's
+// disallowed-hosts guard returns a controlled 422 (validation) error — proving
+// the tool is invocable, rejects the request through the SPEC §4.4 validation
+// taxonomy, and does not leak the source PAT into the result (S2).
+func (s *FullSuite) TestWriteRepoMigrate() {
+	t := s.T()
+
+	src := s.stand.BaseURL() + "/" + s.stand.Admin() + "/" + s.repoName + ".git"
+
+	s.callErrCategory(t, "forgejo_repo_migrate", map[string]any{
+		"clone_addr":    src,
+		"repo_name":     s.ns + "-migrated",
+		"repo_owner":    s.stand.Admin(),
+		"service":       "forgejo",
+		"auth_username": s.stand.Admin(),
+		"auth_token":    s.stand.pat,
+		"private":       true,
+	}, "disallowed", "import", "host")
+}

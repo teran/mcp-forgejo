@@ -600,7 +600,7 @@ func (s *FullSuite) newSecondUser(t *testing.T) *secondConn {
 	return s.newSecondClient(t, token)
 }
 
-// The canonical inventory of the 51 registered tools (mirrors server.go).
+// The canonical inventory of the 52 registered tools (mirrors server.go).
 var allTools = []string{
 	// 19 READ
 	"forgejo_repo_get", "forgejo_repo_list_contents", "forgejo_file_get",
@@ -609,15 +609,15 @@ var allTools = []string{
 	"forgejo_issue_list", "forgejo_pull_list", "forgejo_pull_get",
 	"forgejo_release_list", "forgejo_tag_list", "forgejo_milestone_list",
 	"forgejo_label_list", "forgejo_user_get", "forgejo_user_list", "forgejo_branch_get",
-	// 22 WRITE
+	// 23 WRITE
 	"forgejo_repo_create", "forgejo_org_create", "forgejo_file_write",
 	"forgejo_file_write_many", "forgejo_branch_create", "forgejo_issue_create",
 	"forgejo_issue_update", "forgejo_issue_comment_add", "forgejo_pull_create",
 	"forgejo_pull_update", "forgejo_pull_merge", "forgejo_pull_review",
 	"forgejo_release_create", "forgejo_tag_create", "forgejo_repo_fork",
-	"forgejo_repo_update", "forgejo_milestone_create", "forgejo_milestone_update",
-	"forgejo_label_create", "forgejo_label_update", "forgejo_issue_set_labels",
-	"forgejo_release_asset_upload",
+	"forgejo_repo_update", "forgejo_repo_migrate", "forgejo_milestone_create",
+	"forgejo_milestone_update", "forgejo_label_create", "forgejo_label_update",
+	"forgejo_issue_set_labels", "forgejo_release_asset_upload",
 	// 10 DELETE
 	"forgejo_file_delete", "forgejo_branch_delete", "forgejo_issue_delete",
 	"forgejo_comment_delete", "forgejo_release_delete", "forgejo_repo_delete",
@@ -625,11 +625,11 @@ var allTools = []string{
 	"forgejo_label_delete",
 }
 
-// TestZCoverageAll51Tools (sorts last among Test* methods) proves every one of
-// the 51 registered tools was explicitly invoked through the MCP protocol at
+// TestZCoverageAll52Tools (sorts last among Test* methods) proves every one of
+// the 52 registered tools was explicitly invoked through the MCP protocol at
 // least once, and that the advertised tool surface matches the canonical
 // inventory.
-func (s *FullSuite) TestZCoverageAll51Tools() {
+func (s *FullSuite) TestZCoverageAll52Tools() {
 	t := s.T()
 
 	advertised := s.stand.ListTools(t)
