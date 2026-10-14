@@ -354,6 +354,33 @@ func UpdateRepository(ctx context.Context, svc domain.RepositoryUpdateService, o
 	return svc.UpdateRepository(ctx, owner, repo, in)
 }
 
+// MigrateRepository migrates a remote git repository (e.g. from GitHub) into
+// Forgejo (SPEC 6.2, repoMigrate). clone_addr and repo_name are required, and
+// service must be a known value (empty means Forgejo's server default). Not
+// idempotent — a second migrate of the same name conflicts.
+func MigrateRepository(ctx context.Context, svc domain.RepositoryMigrateService, in domain.MigrateRepositoryInput) (domain.Repository, error) {
+	if strings.TrimSpace(in.CloneAddr) == "" {
+		return domain.Repository{}, validationError("clone address is required")
+	}
+	if strings.TrimSpace(in.RepoName) == "" {
+		return domain.Repository{}, validationError("repository name is required")
+	}
+	if in.Service != "" && !validMigrateService(in.Service) {
+		return domain.Repository{}, validationError("unsupported repository service")
+	}
+	return svc.MigrateRepository(ctx, in)
+}
+
+// validMigrateService reports whether service names a supported source
+// provider. An empty service is allowed (Forgejo defaults to github).
+func validMigrateService(s string) bool {
+	switch s {
+	case "github", "git", "gitea", "gitlab", "gogs", "onedev", "gitbucket", "codebase", "forgejo", "pagure":
+		return true
+	}
+	return false
+}
+
 // ListMilestones lists the milestones of a repository (SPEC 6.1).
 func ListMilestones(ctx context.Context, svc domain.MilestoneService, owner, repo string) ([]domain.Milestone, error) {
 	return svc.ListMilestones(ctx, owner, repo)

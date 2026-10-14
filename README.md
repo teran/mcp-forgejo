@@ -32,7 +32,7 @@ branches, releases, and organizations.
 
 ## Features
 
-The server exposes **51 tools** covering the full **read → write/update → delete**
+The server exposes **52 tools** covering the full **read → write/update → delete**
 surface. Each is a complete use-case (no client-side chaining of low-level
 calls) and is described with full metadata (annotations + per-tool instructions)
 in `SPEC.md` §6.
@@ -58,10 +58,11 @@ in `SPEC.md` §6.
 - `forgejo_user_get` — get the current user, or a user by name
 - `forgejo_user_list` — search users
 
-**Write / Update (22)**
+**Write / Update (23)**
 - `forgejo_repo_create` — create a repository (current user **or** an org)
 - `forgejo_repo_update` — update a repository
 - `forgejo_repo_fork` — fork a repository
+- `forgejo_repo_migrate` — migrate a remote repo (e.g. from GitHub) into Forgejo
 - `forgejo_org_create` — create an organization
 - `forgejo_file_write` — write **or** update a file in one commit
 - `forgejo_file_write_many` — write several files in one commit

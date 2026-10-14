@@ -62,6 +62,7 @@ func headerParts(h http.Header) []string {
 var sensitiveArgsKeys = map[string]struct{}{
 	"token": {}, "password": {}, "passwd": {}, "secret": {}, "apikey": {},
 	"access_key": {}, "private_key": {}, "authorization": {}, "cookie": {}, "pat": {},
+	"auth_token": {},
 }
 
 // redactArgs returns a redacted representation of a tool-call arguments JSON
