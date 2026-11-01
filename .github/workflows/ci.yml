@@ -42,7 +42,7 @@ jobs:
         # $(go env GOPATH)/bin on PATH, so the `golangci-lint` binary is
         # available to the subsequent `make lint` step.
         #
-        # v2.13.2 was bumped to v2.14.0 because Go 1.27.x (>= 1.27.1) writes
+        # v2.13.2 was bumped to v2.14.0 because Go 1.27.x (>= 1.27.3) writes
         # compiler export-data version 5, which the x/tools bundled in v2.13.2
         # (max version 4) cannot decode: golangci-lint then fails every package
         # with "could not import internal/goarch ... export data version 5 is
