@@ -33,12 +33,20 @@ import (
 // Forgejo read endpoints are expected to answer well within this bound.
 const requestTimeout = 30 * time.Second
 
+// defaultUserAgent is the identifying outbound User-Agent used when the caller
+// does not provide one via Config.UserAgent (M10/N44). It follows the
+// "app-name/version (reference)" convention.
+const defaultUserAgent = "mcp-forgejo/dev (https://github.com/teran/mcp-forgejo)"
+
 // Config carries the values the client needs to talk to Forgejo. It is a
 // small, transport-agnostic struct local to this package so the client does
 // not depend on config.
 type Config struct {
 	BaseURL string
 	Token   string `secret:"true"`
+	// UserAgent is the identifying User-Agent sent on every outbound request.
+	// When empty, defaultUserAgent is used (M10/N44).
+	UserAgent string
 }
 
 // Client is a minimal Forgejo REST client implementing the domain services.
@@ -127,6 +135,14 @@ func newClient(cfg Config, hc *http.Client) *Client {
 	// failed upstream surfaces as a KindTransient error.
 	rc.SetBaseURL(strings.TrimRight(cfg.BaseURL, "/"))
 	rc.SetHeader("Authorization", "token "+cfg.Token)
+	// Identifying outbound User-Agent (M10/N44): use the caller-provided value
+	// when present, otherwise the package fallback so every request identifies
+	// the client.
+	ua := cfg.UserAgent
+	if ua == "" {
+		ua = defaultUserAgent
+	}
+	rc.SetHeader("User-Agent", ua)
 	rc.SetTimeout(requestTimeout)
 	rc.SetRetryCount(0)
 

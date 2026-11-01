@@ -149,7 +149,11 @@ func run(args []string) int {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 
-	s, err := buildServerWithObserver(forgejo.Config{BaseURL: cfg.ForgejoURL, Token: cfg.ForgejoToken}, logger, upstreamObserver)
+	s, err := buildServerWithObserver(forgejo.Config{
+		BaseURL:   cfg.ForgejoURL,
+		Token:     cfg.ForgejoToken,
+		UserAgent: fmt.Sprintf("%s/%s (%s)", appName, appVersion, "https://github.com/teran/mcp-forgejo"),
+	}, logger, upstreamObserver)
 	if err != nil {
 		logger.WithError(err).Error("failed to build server")
 		return 1
