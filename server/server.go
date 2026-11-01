@@ -57,8 +57,48 @@ func BuildWithObserver(cfg forgejo.Config, log *logrus.Logger, obs domain.Upstre
 	}
 	s := mcp.NewServer(&mcp.Implementation{Name: implName, Version: implVersion}, opts)
 	s.AddReceivingMiddleware(requestContextMiddleware(log))
+	registeredTools = registeredTools[:0] // reset per build so state never leaks across calls
 	registerTools(s, client)
+	if log != nil {
+		for _, d := range registeredTools {
+			log.WithFields(logrus.Fields{
+				"tool":           d.tool,
+				"title":          d.title,
+				"always_present": d.alwaysPresent,
+			}).Info("registered tool")
+		}
+	}
 	return s, nil
+}
+
+// toolDescriptor records the observable startup tool-surface contract for one
+// registered tool (L10/L11/N45/N46/N08GO): the tool name, its human-readable
+// title and whether it is always present. Every tool in this server is static,
+// so alwaysPresent is always true; the field exists so future dynamic tools can
+// set it to false (L11).
+type toolDescriptor struct {
+	tool          string
+	title         string
+	alwaysPresent bool
+}
+
+// registeredTools collects the tool surface of the current build call so
+// BuildWithObserver can emit one startup log line per registered tool. It is
+// reset at the start of each build and is only read locally (no outbound
+// request — A02).
+var registeredTools []toolDescriptor
+
+// addTool registers a tool with the MCP server and records its observable
+// surface (name + title) so the startup log can emit one line per tool. It is
+// a thin local wrapper around mcp.AddTool; all tools are static today, so
+// alwaysPresent defaults to true (L11).
+func addTool[In, Out any](s *mcp.Server, tool *mcp.Tool, h mcp.ToolHandlerFor[In, Out]) {
+	mcp.AddTool(s, tool, h)
+	registeredTools = append(registeredTools, toolDescriptor{
+		tool:          tool.Name,
+		title:         tool.Title,
+		alwaysPresent: true,
+	})
 }
 
 // registerTools registers every tool, grouped read -> write -> delete (S3).
@@ -124,7 +164,7 @@ func deleteAnnotations(title string) *mcp.ToolAnnotations {
 
 // registerRepoTools registers the repository/content read tools.
 func registerRepoTools(s *mcp.Server, client *forgejo.Client) {
-	mcp.AddTool(s, &mcp.Tool{
+	addTool(s, &mcp.Tool{
 		Name:        "forgejo_repo_get",
 		Title:       "Get repository",
 		Description: "Returns details of a repository by owner+name. Read-only; never modifies.",
@@ -134,7 +174,7 @@ func registerRepoTools(s *mcp.Server, client *forgejo.Client) {
 		return nil, repo, err
 	})
 
-	mcp.AddTool(s, &mcp.Tool{
+	addTool(s, &mcp.Tool{
 		Name:        "forgejo_repo_list_contents",
 		Title:       "List directory contents",
 		Description: "Lists the entries (type/sha/size) of a directory at path+ref. Read-only.",
@@ -144,7 +184,7 @@ func registerRepoTools(s *mcp.Server, client *forgejo.Client) {
 		return nil, domain.Items[domain.FileEntry]{Items: entries}, err
 	})
 
-	mcp.AddTool(s, &mcp.Tool{
+	addTool(s, &mcp.Tool{
 		Name:        "forgejo_file_get",
 		Title:       "Read file",
 		Description: "Returns the UTF-8 text content of a file at path+ref. If the blob is not valid UTF-8, returns a binary flag instead of decoding. Read-only.",
@@ -157,7 +197,7 @@ func registerRepoTools(s *mcp.Server, client *forgejo.Client) {
 
 // registerOrgTools registers the organization read tools.
 func registerOrgTools(s *mcp.Server, client *forgejo.Client) {
-	mcp.AddTool(s, &mcp.Tool{
+	addTool(s, &mcp.Tool{
 		Name:        "forgejo_org_list",
 		Title:       "List my organizations",
 		Description: "Lists the organizations the current user belongs to. Read-only.",
@@ -170,7 +210,7 @@ func registerOrgTools(s *mcp.Server, client *forgejo.Client) {
 
 // registerIssueTools registers the issue read tools.
 func registerIssueTools(s *mcp.Server, client *forgejo.Client) {
-	mcp.AddTool(s, &mcp.Tool{
+	addTool(s, &mcp.Tool{
 		Name:        "forgejo_issue_get",
 		Title:       "Get issue + comments",
 		Description: "Returns an issue and its comments in a single call. Read-only.",
@@ -185,7 +225,7 @@ func registerIssueTools(s *mcp.Server, client *forgejo.Client) {
 // #7, #8, #9, #11, #12, #13): repository search, diff, commits, branches,
 // issues, pull requests and releases.
 func registerBatchAReadTools(s *mcp.Server, client *forgejo.Client) {
-	mcp.AddTool(s, &mcp.Tool{
+	addTool(s, &mcp.Tool{
 		Name:        "forgejo_repo_search",
 		Title:       "Search repositories",
 		Description: "Search the Forgejo instance by q, topic, sort, order and an optional private filter. Returns matching repositories. Read-only.",
@@ -195,7 +235,7 @@ func registerBatchAReadTools(s *mcp.Server, client *forgejo.Client) {
 		return nil, domain.Items[domain.Repository]{Items: repos}, err
 	})
 
-	mcp.AddTool(s, &mcp.Tool{
+	addTool(s, &mcp.Tool{
 		Name:        "forgejo_diff_get",
 		Title:       "Get diff",
 		Description: "Returns a unified diff between two refs (basehead, e.g. main..dev) or for a pull request (pr). Read-only.",
@@ -205,7 +245,7 @@ func registerBatchAReadTools(s *mcp.Server, client *forgejo.Client) {
 		return nil, diff, err
 	})
 
-	mcp.AddTool(s, &mcp.Tool{
+	addTool(s, &mcp.Tool{
 		Name:        "forgejo_commit_list",
 		Title:       "List commits",
 		Description: "Lists commits of a repository branch with pagination. Read-only.",
@@ -215,7 +255,7 @@ func registerBatchAReadTools(s *mcp.Server, client *forgejo.Client) {
 		return nil, domain.Items[domain.Commit]{Items: commits}, err
 	})
 
-	mcp.AddTool(s, &mcp.Tool{
+	addTool(s, &mcp.Tool{
 		Name:        "forgejo_branch_list",
 		Title:       "List branches",
 		Description: "Lists the branches of a repository. Read-only.",
@@ -225,7 +265,7 @@ func registerBatchAReadTools(s *mcp.Server, client *forgejo.Client) {
 		return nil, domain.Items[domain.Branch]{Items: branches}, err
 	})
 
-	mcp.AddTool(s, &mcp.Tool{
+	addTool(s, &mcp.Tool{
 		Name:        "forgejo_issue_list",
 		Title:       "List issues",
 		Description: "Lists issues filtered by state (open/closed/all) with pagination. Read-only.",
@@ -235,7 +275,7 @@ func registerBatchAReadTools(s *mcp.Server, client *forgejo.Client) {
 		return nil, domain.Items[domain.Issue]{Items: issues}, err
 	})
 
-	mcp.AddTool(s, &mcp.Tool{
+	addTool(s, &mcp.Tool{
 		Name:        "forgejo_pull_list",
 		Title:       "List pull requests",
 		Description: "Lists pull requests filtered by state (open/closed/all) with pagination. Read-only.",
@@ -245,7 +285,7 @@ func registerBatchAReadTools(s *mcp.Server, client *forgejo.Client) {
 		return nil, domain.Items[domain.PullRequest]{Items: prs}, err
 	})
 
-	mcp.AddTool(s, &mcp.Tool{
+	addTool(s, &mcp.Tool{
 		Name:        "forgejo_pull_get",
 		Title:       "Get pull request + files + checks",
 		Description: "Returns a pull request together with its changed files and combined checks status in a single call. Read-only.",
@@ -255,7 +295,7 @@ func registerBatchAReadTools(s *mcp.Server, client *forgejo.Client) {
 		return nil, detail, err
 	})
 
-	mcp.AddTool(s, &mcp.Tool{
+	addTool(s, &mcp.Tool{
 		Name:        "forgejo_release_list",
 		Title:       "List releases",
 		Description: "Lists the releases of a repository, or fetches the latest release when latest is true. Read-only.",
@@ -359,7 +399,7 @@ type releaseListIn struct {
 // registerWriteTools registers the Batch B write/update tools (SPEC 6.2
 // #14–#25). They are grouped read -> write -> delete (S3).
 func registerWriteTools(s *mcp.Server, client *forgejo.Client) {
-	mcp.AddTool(s, &mcp.Tool{
+	addTool(s, &mcp.Tool{
 		Name:        "forgejo_repo_create",
 		Title:       "Create repository",
 		Description: "Create a repository (optionally under an organization). Creating a name that already exists conflicts; not idempotent.",
@@ -372,7 +412,7 @@ func registerWriteTools(s *mcp.Server, client *forgejo.Client) {
 		return nil, repo, err
 	})
 
-	mcp.AddTool(s, &mcp.Tool{
+	addTool(s, &mcp.Tool{
 		Name:        "forgejo_org_create",
 		Title:       "Create organization",
 		Description: "Create an organization with a username, description and full name. Creating a name that already exists conflicts; not idempotent.",
@@ -384,7 +424,7 @@ func registerWriteTools(s *mcp.Server, client *forgejo.Client) {
 		return nil, org, err
 	})
 
-	mcp.AddTool(s, &mcp.Tool{
+	addTool(s, &mcp.Tool{
 		Name:        "forgejo_file_write",
 		Title:       "Write/update file",
 		Description: "Write text content to a file at path+branch in a single commit. Creates the file when absent, updates it when present. Not idempotent: every call records a new commit.",
@@ -396,7 +436,7 @@ func registerWriteTools(s *mcp.Server, client *forgejo.Client) {
 		return nil, res, err
 	})
 
-	mcp.AddTool(s, &mcp.Tool{
+	addTool(s, &mcp.Tool{
 		Name:        "forgejo_file_write_many",
 		Title:       "Write multiple files",
 		Description: "Create/update/delete several files in one commit at a branch with a commit message.",
@@ -412,7 +452,7 @@ func registerWriteTools(s *mcp.Server, client *forgejo.Client) {
 		return nil, res, err
 	})
 
-	mcp.AddTool(s, &mcp.Tool{
+	addTool(s, &mcp.Tool{
 		Name:        "forgejo_branch_create",
 		Title:       "Create branch",
 		Description: "Create a branch from an existing ref. Creating an existing branch conflicts; not idempotent.",
@@ -422,7 +462,7 @@ func registerWriteTools(s *mcp.Server, client *forgejo.Client) {
 		return nil, branch, err
 	})
 
-	mcp.AddTool(s, &mcp.Tool{
+	addTool(s, &mcp.Tool{
 		Name:        "forgejo_issue_create",
 		Title:       "Create issue",
 		Description: "Create an issue with a title, body, labels and milestone.",
@@ -434,7 +474,7 @@ func registerWriteTools(s *mcp.Server, client *forgejo.Client) {
 		return nil, issue, err
 	})
 
-	mcp.AddTool(s, &mcp.Tool{
+	addTool(s, &mcp.Tool{
 		Name:        "forgejo_issue_update",
 		Title:       "Update/close/reopen issue",
 		Description: "Edit an existing issue's title/body or set its state to open/closed. Repeating the same edit is idempotent.",
@@ -446,7 +486,7 @@ func registerWriteTools(s *mcp.Server, client *forgejo.Client) {
 		return nil, issue, err
 	})
 
-	mcp.AddTool(s, &mcp.Tool{
+	addTool(s, &mcp.Tool{
 		Name:        "forgejo_issue_comment_add",
 		Title:       "Add issue comment",
 		Description: "Append a comment to an issue. Each call adds a new comment; not idempotent.",
@@ -456,7 +496,7 @@ func registerWriteTools(s *mcp.Server, client *forgejo.Client) {
 		return nil, comment, err
 	})
 
-	mcp.AddTool(s, &mcp.Tool{
+	addTool(s, &mcp.Tool{
 		Name:        "forgejo_pull_create",
 		Title:       "Create pull request",
 		Description: "Open a pull request from a head branch to a base branch with a title/body.",
@@ -468,7 +508,7 @@ func registerWriteTools(s *mcp.Server, client *forgejo.Client) {
 		return nil, pr, err
 	})
 
-	mcp.AddTool(s, &mcp.Tool{
+	addTool(s, &mcp.Tool{
 		Name:        "forgejo_pull_update",
 		Title:       "Update/close/reopen pull request",
 		Description: "Edit an existing pull request's title/body or set its state to open/closed. Repeating the same edit is idempotent.",
@@ -480,7 +520,7 @@ func registerWriteTools(s *mcp.Server, client *forgejo.Client) {
 		return nil, pr, err
 	})
 
-	mcp.AddTool(s, &mcp.Tool{
+	addTool(s, &mcp.Tool{
 		Name:        "forgejo_pull_merge",
 		Title:       "Merge pull request",
 		Description: "Merge a pull request with a merge/squash/rebase method and report whether it was merged or already merged.",
@@ -490,7 +530,7 @@ func registerWriteTools(s *mcp.Server, client *forgejo.Client) {
 		return nil, res, err
 	})
 
-	mcp.AddTool(s, &mcp.Tool{
+	addTool(s, &mcp.Tool{
 		Name:        "forgejo_pull_review",
 		Title:       "Review pull request",
 		Description: "Create and submit a pull request review (approve/comment/request_changes) in one call.",
@@ -500,7 +540,7 @@ func registerWriteTools(s *mcp.Server, client *forgejo.Client) {
 		return nil, review, err
 	})
 
-	mcp.AddTool(s, &mcp.Tool{
+	addTool(s, &mcp.Tool{
 		Name:        "forgejo_release_create",
 		Title:       "Create release",
 		Description: "Create a release for an existing tag with a title and notes.",
@@ -631,7 +671,7 @@ type releaseCreateIn struct {
 // They are registered last (read -> write -> delete, S3). Each is destructive
 // and therefore requires confirmation, surfaced in the description.
 func registerDeleteTools(s *mcp.Server, client *forgejo.Client) {
-	mcp.AddTool(s, &mcp.Tool{
+	addTool(s, &mcp.Tool{
 		Name:        "forgejo_file_delete",
 		Title:       "Delete file",
 		Description: "Delete a file at path+branch with a commit message. Destructive — confirm before use.",
@@ -643,7 +683,7 @@ func registerDeleteTools(s *mcp.Server, client *forgejo.Client) {
 		return nil, res, err
 	})
 
-	mcp.AddTool(s, &mcp.Tool{
+	addTool(s, &mcp.Tool{
 		Name:        "forgejo_branch_delete",
 		Title:       "Delete branch",
 		Description: "Delete a branch. Destructive — confirm before use; will not delete the default branch.",
@@ -653,7 +693,7 @@ func registerDeleteTools(s *mcp.Server, client *forgejo.Client) {
 		return nil, nil, err
 	})
 
-	mcp.AddTool(s, &mcp.Tool{
+	addTool(s, &mcp.Tool{
 		Name:        "forgejo_issue_delete",
 		Title:       "Delete issue",
 		Description: "Permanently delete an issue. Destructive — confirm before use.",
@@ -663,7 +703,7 @@ func registerDeleteTools(s *mcp.Server, client *forgejo.Client) {
 		return nil, nil, err
 	})
 
-	mcp.AddTool(s, &mcp.Tool{
+	addTool(s, &mcp.Tool{
 		Name:        "forgejo_comment_delete",
 		Title:       "Delete comment",
 		Description: "Delete an issue/PR comment. Destructive — confirm before use.",
@@ -673,7 +713,7 @@ func registerDeleteTools(s *mcp.Server, client *forgejo.Client) {
 		return nil, nil, err
 	})
 
-	mcp.AddTool(s, &mcp.Tool{
+	addTool(s, &mcp.Tool{
 		Name:        "forgejo_release_delete",
 		Title:       "Delete release",
 		Description: "Delete a release (tag remains). Destructive — confirm before use.",
@@ -683,7 +723,7 @@ func registerDeleteTools(s *mcp.Server, client *forgejo.Client) {
 		return nil, nil, err
 	})
 
-	mcp.AddTool(s, &mcp.Tool{
+	addTool(s, &mcp.Tool{
 		Name:        "forgejo_repo_delete",
 		Title:       "Delete repository",
 		Description: "Permanently delete a repository. Highly destructive — requires explicit confirmation before invoking.",
@@ -693,7 +733,7 @@ func registerDeleteTools(s *mcp.Server, client *forgejo.Client) {
 		return nil, nil, err
 	})
 
-	mcp.AddTool(s, &mcp.Tool{
+	addTool(s, &mcp.Tool{
 		Name:        "forgejo_org_delete",
 		Title:       "Delete organization",
 		Description: "Permanently delete an organization. Highly destructive — confirm before use.",
@@ -750,7 +790,7 @@ type orgDeleteIn struct {
 // (read), forgejo_tag_create / forgejo_repo_fork / forgejo_repo_update (write),
 // forgejo_tag_delete (destructive). They are grouped read -> write -> delete (S3).
 func registerBatchTTools(s *mcp.Server, client *forgejo.Client) {
-	mcp.AddTool(s, &mcp.Tool{
+	addTool(s, &mcp.Tool{
 		Name:        "forgejo_tag_list",
 		Title:       "List tags",
 		Description: "Lists the git tags of a repository. Read-only.",
@@ -760,7 +800,7 @@ func registerBatchTTools(s *mcp.Server, client *forgejo.Client) {
 		return nil, domain.Items[domain.Tag]{Items: tags}, err
 	})
 
-	mcp.AddTool(s, &mcp.Tool{
+	addTool(s, &mcp.Tool{
 		Name:        "forgejo_tag_create",
 		Title:       "Create tag",
 		Description: "Create a git tag pointing at a ref with an optional message. Creating a tag that already exists conflicts; not idempotent.",
@@ -772,7 +812,7 @@ func registerBatchTTools(s *mcp.Server, client *forgejo.Client) {
 		return nil, tag, err
 	})
 
-	mcp.AddTool(s, &mcp.Tool{
+	addTool(s, &mcp.Tool{
 		Name:        "forgejo_repo_fork",
 		Title:       "Fork repository",
 		Description: "Fork a repository into an organization or user namespace. Not idempotent.",
@@ -784,7 +824,7 @@ func registerBatchTTools(s *mcp.Server, client *forgejo.Client) {
 		return nil, repo, err
 	})
 
-	mcp.AddTool(s, &mcp.Tool{
+	addTool(s, &mcp.Tool{
 		Name:        "forgejo_repo_update",
 		Title:       "Update repository",
 		Description: "Edit an existing repository's description, website, default branch or visibility. Repeating the same edit is idempotent.",
@@ -796,7 +836,7 @@ func registerBatchTTools(s *mcp.Server, client *forgejo.Client) {
 		return nil, repo, err
 	})
 
-	mcp.AddTool(s, &mcp.Tool{
+	addTool(s, &mcp.Tool{
 		Name:        "forgejo_repo_migrate",
 		Title:       "Migrate repository",
 		Description: "Migrate a remote git repository (e.g. from GitHub) into Forgejo using its clone URL. Not idempotent: migrating a name that already exists conflicts. The source provider access token (auth_token) is accepted and redacted.",
@@ -825,7 +865,7 @@ func registerBatchTTools(s *mcp.Server, client *forgejo.Client) {
 		return nil, repo, err
 	})
 
-	mcp.AddTool(s, &mcp.Tool{
+	addTool(s, &mcp.Tool{
 		Name:        "forgejo_tag_delete",
 		Title:       "Delete tag",
 		Description: "Delete a git tag by its name. Destructive — confirm before use.",
@@ -897,7 +937,7 @@ type repoMigrateIn struct {
 // label list/create/update/delete plus issue_set_labels. They are grouped read
 // -> write -> delete (S3).
 func registerBatchMTools(s *mcp.Server, client *forgejo.Client) {
-	mcp.AddTool(s, &mcp.Tool{
+	addTool(s, &mcp.Tool{
 		Name:        "forgejo_milestone_list",
 		Title:       "List milestones",
 		Description: "Lists the milestones of a repository. Read-only.",
@@ -907,7 +947,7 @@ func registerBatchMTools(s *mcp.Server, client *forgejo.Client) {
 		return nil, domain.Items[domain.Milestone]{Items: ms}, err
 	})
 
-	mcp.AddTool(s, &mcp.Tool{
+	addTool(s, &mcp.Tool{
 		Name:        "forgejo_milestone_create",
 		Title:       "Create milestone",
 		Description: "Create a milestone with a title, description and due date. Creating a title that already exists conflicts; not idempotent.",
@@ -919,7 +959,7 @@ func registerBatchMTools(s *mcp.Server, client *forgejo.Client) {
 		return nil, m, err
 	})
 
-	mcp.AddTool(s, &mcp.Tool{
+	addTool(s, &mcp.Tool{
 		Name:        "forgejo_milestone_update",
 		Title:       "Update milestone",
 		Description: "Edit an existing milestone's title, description, state or due date. Repeating the same edit is idempotent.",
@@ -931,7 +971,7 @@ func registerBatchMTools(s *mcp.Server, client *forgejo.Client) {
 		return nil, m, err
 	})
 
-	mcp.AddTool(s, &mcp.Tool{
+	addTool(s, &mcp.Tool{
 		Name:        "forgejo_milestone_delete",
 		Title:       "Delete milestone",
 		Description: "Delete a milestone by its ID. Destructive — confirm before use.",
@@ -941,7 +981,7 @@ func registerBatchMTools(s *mcp.Server, client *forgejo.Client) {
 		return nil, nil, err
 	})
 
-	mcp.AddTool(s, &mcp.Tool{
+	addTool(s, &mcp.Tool{
 		Name:        "forgejo_label_list",
 		Title:       "List labels",
 		Description: "Lists the labels of a repository. Read-only.",
@@ -951,7 +991,7 @@ func registerBatchMTools(s *mcp.Server, client *forgejo.Client) {
 		return nil, domain.Items[domain.Label]{Items: ls}, err
 	})
 
-	mcp.AddTool(s, &mcp.Tool{
+	addTool(s, &mcp.Tool{
 		Name:        "forgejo_label_create",
 		Title:       "Create label",
 		Description: "Create a label with a name, color and description. Creating a name that already exists conflicts; not idempotent.",
@@ -963,7 +1003,7 @@ func registerBatchMTools(s *mcp.Server, client *forgejo.Client) {
 		return nil, l, err
 	})
 
-	mcp.AddTool(s, &mcp.Tool{
+	addTool(s, &mcp.Tool{
 		Name:        "forgejo_label_update",
 		Title:       "Update label",
 		Description: "Edit an existing label's name, color or description. Repeating the same edit is idempotent.",
@@ -975,7 +1015,7 @@ func registerBatchMTools(s *mcp.Server, client *forgejo.Client) {
 		return nil, l, err
 	})
 
-	mcp.AddTool(s, &mcp.Tool{
+	addTool(s, &mcp.Tool{
 		Name:        "forgejo_label_delete",
 		Title:       "Delete label",
 		Description: "Delete a label by its ID. Destructive — confirm before use.",
@@ -985,7 +1025,7 @@ func registerBatchMTools(s *mcp.Server, client *forgejo.Client) {
 		return nil, nil, err
 	})
 
-	mcp.AddTool(s, &mcp.Tool{
+	addTool(s, &mcp.Tool{
 		Name:        "forgejo_issue_set_labels",
 		Title:       "Set issue labels",
 		Description: "Replace the exact set of labels on an issue by their IDs. Repeating the same set is idempotent.",
@@ -1000,7 +1040,7 @@ func registerBatchMTools(s *mcp.Server, client *forgejo.Client) {
 // forgejo_user_list, forgejo_release_asset_upload, forgejo_branch_get, grouped
 // read -> write.
 func registerBatchUTools(s *mcp.Server, client *forgejo.Client) {
-	mcp.AddTool(s, &mcp.Tool{
+	addTool(s, &mcp.Tool{
 		Name:        "forgejo_user_get",
 		Title:       "Get user",
 		Description: "Returns a user by username; when username is omitted returns the current authenticated user. Read-only.",
@@ -1010,7 +1050,7 @@ func registerBatchUTools(s *mcp.Server, client *forgejo.Client) {
 		return nil, u, err
 	})
 
-	mcp.AddTool(s, &mcp.Tool{
+	addTool(s, &mcp.Tool{
 		Name:        "forgejo_user_list",
 		Title:       "Search users",
 		Description: "Search Forgejo users by a query string. Returns matching users. Read-only.",
@@ -1020,7 +1060,7 @@ func registerBatchUTools(s *mcp.Server, client *forgejo.Client) {
 		return nil, domain.Items[domain.User]{Items: users}, err
 	})
 
-	mcp.AddTool(s, &mcp.Tool{
+	addTool(s, &mcp.Tool{
 		Name:        "forgejo_branch_get",
 		Title:       "Get branch",
 		Description: "Returns a single branch of a repository by name. Read-only.",
@@ -1030,7 +1070,7 @@ func registerBatchUTools(s *mcp.Server, client *forgejo.Client) {
 		return nil, b, err
 	})
 
-	mcp.AddTool(s, &mcp.Tool{
+	addTool(s, &mcp.Tool{
 		Name:        "forgejo_release_asset_upload",
 		Title:       "Upload release asset",
 		Description: "Upload content (base64) as a named file attachment to a release. Not idempotent: each call creates a new asset.",
