@@ -2,7 +2,7 @@
 
 **Purpose.** `mcp-forgejo` is a [Model Context Protocol](https://modelcontextprotocol.io) (MCP) server that wraps the **Forgejo REST API** so a model-driven client (editor, CLI, or remote team sidecar) can perform common software-development tasks against an internal Forgejo instance: repositories, files/contents, issues, pull requests, branches, releases, and organizations.
 
-**Language (C02GO).** Go, pinned at the latest stable **1.27.1** (see `go.mod`, `GO_VERSION: "1.27"` in `ci.yml`) — see [C01GO]. The official MCP SDK `github.com/modelcontextprotocol/go-sdk` is used; the protocol is **never hand-rolled** (M01).
+**Language (C02GO).** Go, pinned at the latest stable **1.27.3** (see `go.mod`, `GO_VERSION: "1.27"` in `ci.yml`) — see [C01GO]. The official MCP SDK `github.com/modelcontextprotocol/go-sdk` is used; the protocol is **never hand-rolled** (M01).
 
 **Deployment type (M06).** **HYBRID** — supports both **STDIO** (local editor/CLI companion) and **HTTP/SSE** (remote sidecar). Because it supports HTTP/SSE, it MUST build & publish a container image (R01) and route logs to the channel appropriate per transport (L01). Under DDD/Clean this is achieved with **driver implementations per launch mode** (a `stdio` driver and an `http/sse` driver), selected at startup.
 
@@ -342,7 +342,7 @@ The Go profile is enforced in CI (`.github/workflows/ci.yml`) and locally:
 
 | Check | Command | Gate |
 |-------|---------|------|
-| Go version | `go 1.27.1` in `go.mod` == `GO_VERSION: "1.27"` | C01GO/N01GO |
+| Go version | `go 1.27.3` in `go.mod` == `GO_VERSION: "1.27"` | C01GO/N01GO |
 | Coverage | `go test -race -coverprofile=cover.out -covermode=atomic ./...` + total **≥ 95%** | C01/N06 (build fails below 95) |
 | Race detector | `go test -race ./...` | C04GO |
 | Lint + format | `golangci-lint run ./...` (gofmt/gofumpt) | C03GO |
