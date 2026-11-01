@@ -949,3 +949,50 @@ func TestSearchReposErrorIsNotFound(t *testing.T) {
 		t.Errorf("expected not-found, got %v", err)
 	}
 }
+
+// TestOutboundUserAgentExplicit verifies that when Config.UserAgent is set, the
+// outbound Forgejo request carries exactly that value as the User-Agent header
+// (conformance M10/N44).
+func TestOutboundUserAgentExplicit(t *testing.T) {
+	const wantUA = "mcp-forgejo/1.2.3 (https://github.com/teran/mcp-forgejo)"
+	var gotUA string
+	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotUA = r.Header.Get("User-Agent")
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"id":1}`))
+	})
+	ts := httptest.NewServer(handler)
+	t.Cleanup(ts.Close)
+	c := NewWithClient(Config{BaseURL: ts.URL, Token: testToken, UserAgent: wantUA}, ts.Client())
+	if _, err := c.GetRepository(context.Background(), "acme", "demo"); err != nil {
+		t.Fatalf("GetRepository() error = %v", err)
+	}
+	if gotUA != wantUA {
+		t.Errorf("User-Agent = %q, want %q", gotUA, wantUA)
+	}
+}
+
+// TestOutboundUserAgentFallback verifies that when Config.UserAgent is empty,
+// the outbound Forgejo request still carries a non-empty identifying
+// User-Agent fallback (conformance M10/N44).
+func TestOutboundUserAgentFallback(t *testing.T) {
+	const wantUA = "mcp-forgejo/dev (https://github.com/teran/mcp-forgejo)"
+	var gotUA string
+	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotUA = r.Header.Get("User-Agent")
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"id":1}`))
+	})
+	ts := httptest.NewServer(handler)
+	t.Cleanup(ts.Close)
+	c := NewWithClient(Config{BaseURL: ts.URL, Token: testToken}, ts.Client())
+	if _, err := c.GetRepository(context.Background(), "acme", "demo"); err != nil {
+		t.Fatalf("GetRepository() error = %v", err)
+	}
+	if gotUA == "" {
+		t.Fatal("User-Agent header is empty, want a non-empty identifying fallback")
+	}
+	if gotUA != wantUA {
+		t.Errorf("User-Agent = %q, want %q", gotUA, wantUA)
+	}
+}
