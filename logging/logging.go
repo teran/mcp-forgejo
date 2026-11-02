@@ -11,6 +11,11 @@ import (
 	"github.com/sirupsen/logrus"
 )
 
+// logFileMode is the owner-only permission mask applied to the stdio log file
+// (L1): the log may contain redacted request/response data, so it must not be
+// world-readable.
+const logFileMode os.FileMode = 0o600
+
 // Channel selects the logging sink for the active transport (L1).
 type Channel string
 
@@ -51,7 +56,7 @@ func Setup(channel Channel, level, filename, format string) (*logrus.Logger, io.
 		// #nosec G304 -- the log file path comes from operator config
 		// (LOG_FILENAME), never from user input; writing logs there is the
 		// intended behavior, not an arbitrary-file-inclusion vector.
-		f, err := os.OpenFile(filename, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o600)
+		f, err := os.OpenFile(filename, os.O_CREATE|os.O_WRONLY|os.O_APPEND, logFileMode)
 		if err != nil {
 			return nil, nil, fmt.Errorf("open log file: %w", err)
 		}

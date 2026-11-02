@@ -1,6 +1,7 @@
 package domain
 
 import (
+	"net/http"
 	"testing"
 	"time"
 )
@@ -30,7 +31,7 @@ func TestUpstreamObservationFields(t *testing.T) {
 		Duration: 5 * time.Millisecond,
 	}
 
-	if o.Method != "GET" {
+	if o.Method != http.MethodGet {
 		t.Errorf("Method = %q, want %q", o.Method, "GET")
 	}
 	if o.Status != 200 {
@@ -68,12 +69,15 @@ func TestUpstreamObserverInterfaceDispatch(t *testing.T) {
 		Method: "GET", Status: 200, InBytes: 1, OutBytes: 2, Duration: time.Millisecond,
 	})
 
-	rec := obs.(*recordingUpstreamObserver)
+	rec, ok := obs.(*recordingUpstreamObserver)
+	if !ok {
+		t.Fatalf("expected *recordingUpstreamObserver, got %T", obs)
+	}
 	if len(rec.got) != 1 {
 		t.Fatalf("observed %d observations, want 1", len(rec.got))
 	}
 	got := rec.got[0]
-	if got.Method != "GET" || got.Status != 200 || got.InBytes != 1 || got.OutBytes != 2 || got.Duration != time.Millisecond {
+	if got.Method != http.MethodGet || got.Status != 200 || got.InBytes != 1 || got.OutBytes != 2 || got.Duration != time.Millisecond {
 		t.Errorf("unexpected observation: %+v", got)
 	}
 }

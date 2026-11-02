@@ -126,8 +126,6 @@ func (s *stubIssueWriteService) CreateIssueComment(_ context.Context, owner, rep
 
 type stubPullWriteService struct {
 	pr                                              domain.PullRequest
-	review                                          domain.Review
-	result                                          domain.PullMergeResult
 	err                                             error
 	gotCreate                                       domain.CreatePullRequestInput
 	gotUpd                                          domain.UpdatePullRequestInput
@@ -366,7 +364,7 @@ func TestWriteFileNotIdempotent(t *testing.T) {
 		updateRes: domain.FileResult{SHA: "f"},
 	}
 	in := domain.WriteFileInput{Owner: "o", Repo: "r", Path: "a", Branch: "main", Message: "m", Content: "c"}
-	for i := 0; i < 2; i++ {
+	for i := range 2 {
 		if _, err := WriteFile(context.Background(), svc, in); err != nil {
 			t.Fatalf("WriteFile() iteration %d error = %v", i, err)
 		}
@@ -493,7 +491,7 @@ func TestUpdateIssue(t *testing.T) {
 func TestUpdateIssueIdempotent(t *testing.T) {
 	svc := &stubIssueWriteService{issue: domain.Issue{Number: 7}}
 	in := domain.UpdateIssueInput{Owner: "o", Repo: "r", Index: 7, Title: "v2", State: "closed"}
-	for i := 0; i < 2; i++ {
+	for i := range 2 {
 		if _, err := UpdateIssue(context.Background(), svc, in); err != nil {
 			t.Fatalf("UpdateIssue() iteration %d error = %v", i, err)
 		}
@@ -523,7 +521,7 @@ func TestAddIssueComment(t *testing.T) {
 
 func TestAddIssueCommentNotIdempotent(t *testing.T) {
 	svc := &stubIssueWriteService{comment: domain.Comment{ID: 9}}
-	for i := 0; i < 2; i++ {
+	for i := range 2 {
 		if _, err := AddIssueComment(context.Background(), svc, "o", "r", 7, "again"); err != nil {
 			t.Fatalf("AddIssueComment() iteration %d error = %v", i, err)
 		}
@@ -593,7 +591,7 @@ func TestUpdatePullRequest(t *testing.T) {
 func TestUpdatePullRequestIdempotent(t *testing.T) {
 	svc := &stubPullWriteService{pr: domain.PullRequest{Number: 5}}
 	in := domain.UpdatePullRequestInput{Owner: "o", Repo: "r", Index: 5, Title: "v2", State: "open"}
-	for i := 0; i < 2; i++ {
+	for i := range 2 {
 		if _, err := UpdatePullRequest(context.Background(), svc, in); err != nil {
 			t.Fatalf("UpdatePullRequest() iteration %d error = %v", i, err)
 		}

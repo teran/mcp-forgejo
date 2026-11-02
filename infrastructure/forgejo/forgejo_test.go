@@ -242,7 +242,7 @@ func TestGetFileErrorPropagates(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected error for missing file")
 	}
-	fe, ok := err.(*domain.ForgejoError)
+	fe, ok := errors.AsType[*domain.ForgejoError](err)
 	if !ok || fe.Kind != domain.KindNotFound {
 		t.Errorf("expected not-found error, got %v", err)
 	}
@@ -333,7 +333,7 @@ func TestErrorMapping(t *testing.T) {
 			if err == nil {
 				t.Fatal("expected error")
 			}
-			fe, ok := err.(*domain.ForgejoError)
+			fe, ok := errors.AsType[*domain.ForgejoError](err)
 			if !ok {
 				t.Fatalf("expected *domain.ForgejoError, got %T", err)
 			}
@@ -384,7 +384,7 @@ func TestMethodsServerError(t *testing.T) {
 			if err == nil {
 				t.Fatal("expected error for 5xx")
 			}
-			fe, ok := err.(*domain.ForgejoError)
+			fe, ok := errors.AsType[*domain.ForgejoError](err)
 			if !ok {
 				t.Fatalf("expected *domain.ForgejoError, got %T", err)
 			}
@@ -430,7 +430,7 @@ func TestNonJSONBodyParseError(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected parse error")
 	}
-	fe, ok := err.(*domain.ForgejoError)
+	fe, ok := errors.AsType[*domain.ForgejoError](err)
 	if !ok {
 		t.Fatalf("expected *domain.ForgejoError, got %T", err)
 	}
@@ -451,7 +451,7 @@ func TestEmptyBodyAt200ReturnsDecodeError(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected decode error for empty body")
 	}
-	fe, ok := err.(*domain.ForgejoError)
+	fe, ok := errors.AsType[*domain.ForgejoError](err)
 	if !ok {
 		t.Fatalf("expected *domain.ForgejoError, got %T", err)
 	}
@@ -474,7 +474,7 @@ func TestTransportErrorIsTransient(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected transport error")
 	}
-	fe, ok := err.(*domain.ForgejoError)
+	fe, ok := errors.AsType[*domain.ForgejoError](err)
 	if !ok {
 		t.Fatalf("expected *domain.ForgejoError, got %T", err)
 	}
@@ -535,7 +535,7 @@ func TestResponseBodyReadErrorIsTransient(t *testing.T) {
 			if err == nil {
 				t.Fatal("expected error for failing response body read")
 			}
-			fe, ok := err.(*domain.ForgejoError)
+			fe, ok := errors.AsType[*domain.ForgejoError](err)
 			if !ok {
 				t.Fatalf("expected *domain.ForgejoError, got %T", err)
 			}
@@ -589,7 +589,7 @@ func TestMapStatusError(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			err := mapStatusError(tt.status, tt.body, testToken)
-			fe, ok := err.(*domain.ForgejoError)
+			fe, ok := errors.AsType[*domain.ForgejoError](err)
 			if !ok {
 				t.Fatalf("expected *domain.ForgejoError, got %T", err)
 			}
@@ -944,7 +944,7 @@ func TestSearchReposErrorIsNotFound(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected error for 404")
 	}
-	fe, ok := err.(*domain.ForgejoError)
+	fe, ok := errors.AsType[*domain.ForgejoError](err)
 	if !ok || fe.Kind != domain.KindNotFound {
 		t.Errorf("expected not-found, got %v", err)
 	}

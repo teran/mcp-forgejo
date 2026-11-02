@@ -154,7 +154,7 @@ func TestMigrateRepositoryValidationService(t *testing.T) {
 func TestMigrateRepositoryNotIdempotent(t *testing.T) {
 	svc := &stubRepoMigrateService{repo: domain.Repository{Name: "migrated"}}
 	in := domain.MigrateRepositoryInput{CloneAddr: "https://github.com/acme/upstream.git", RepoName: "migrated"}
-	for i := 0; i < 2; i++ {
+	for i := range 2 {
 		if _, err := MigrateRepository(context.Background(), svc, in); err != nil {
 			t.Fatalf("MigrateRepository() iteration %d error = %v", i, err)
 		}

@@ -27,6 +27,7 @@ package forgejo
 
 import (
 	"context"
+	"errors"
 	"net/http"
 	"strings"
 	"testing"
@@ -134,7 +135,7 @@ func TestCreateTagConflict(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected error for 409")
 	}
-	fe, ok := err.(*domain.ForgejoError)
+	fe, ok := errors.AsType[*domain.ForgejoError](err)
 	if !ok || fe.Kind != domain.KindConflict {
 		t.Errorf("expected conflict, got %v", err)
 	}
@@ -226,7 +227,7 @@ func TestForkRepositoryConflict(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected error for 409")
 	}
-	fe, ok := err.(*domain.ForgejoError)
+	fe, ok := errors.AsType[*domain.ForgejoError](err)
 	if !ok || fe.Kind != domain.KindConflict {
 		t.Errorf("expected conflict, got %v", err)
 	}
@@ -326,7 +327,7 @@ func TestBatchTMethodsServerError(t *testing.T) {
 			if err == nil {
 				t.Fatal("expected error for 5xx")
 			}
-			fe, ok := err.(*domain.ForgejoError)
+			fe, ok := errors.AsType[*domain.ForgejoError](err)
 			if !ok {
 				t.Fatalf("expected *domain.ForgejoError, got %T", err)
 			}
@@ -348,7 +349,7 @@ func TestBatchTResponseBodyReadError(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected error for failing response body read")
 	}
-	fe, ok := err.(*domain.ForgejoError)
+	fe, ok := errors.AsType[*domain.ForgejoError](err)
 	if !ok || fe.Kind != domain.KindTransient {
 		t.Errorf("expected transient, got %v", err)
 	}

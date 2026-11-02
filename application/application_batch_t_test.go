@@ -267,7 +267,7 @@ func TestUpdateRepositoryPropagatesError(t *testing.T) {
 func TestUpdateRepositoryIdempotent(t *testing.T) {
 	svc := &stubRepoUpdateService{repo: domain.Repository{Description: "d"}}
 	in := domain.UpdateRepositoryInput{Description: "d"}
-	for i := 0; i < 2; i++ {
+	for i := range 2 {
 		if _, err := UpdateRepository(context.Background(), svc, "acme", "demo", in); err != nil {
 			t.Fatalf("UpdateRepository() iteration %d error = %v", i, err)
 		}

@@ -15,6 +15,14 @@ import (
 	"github.com/sirupsen/logrus"
 )
 
+// Internal HTTP listener timeouts. ReadHeaderTimeout bounds slow-loris style
+// header reads; shutdownTimeout is the grace window for draining in-flight
+// requests on shutdown.
+const (
+	readHeaderTimeout = 10 * time.Second
+	shutdownTimeout   = 5 * time.Second
+)
+
 // NewHandler returns the http.Handler serving the observability endpoints:
 //
 //   - GET /metrics     Prometheus metrics (default Go collectors: runtime/memstats + net/http)
@@ -55,7 +63,7 @@ func Run(ctx context.Context, addr string, logger *logrus.Logger) error {
 	srv := &http.Server{
 		Addr:              addr,
 		Handler:           NewHandler(),
-		ReadHeaderTimeout: 10 * time.Second,
+		ReadHeaderTimeout: readHeaderTimeout,
 	}
 
 	if logger != nil {
@@ -71,7 +79,7 @@ func Run(ctx context.Context, addr string, logger *logrus.Logger) error {
 
 	go func() {
 		<-ctx.Done()
-		shutdownCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 5*time.Second)
+		shutdownCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), shutdownTimeout)
 		defer cancel()
 		_ = srv.Shutdown(shutdownCtx)
 	}()

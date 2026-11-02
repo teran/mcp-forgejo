@@ -9,6 +9,7 @@ import (
 	"context"
 	"encoding/base64"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"strings"
 	"testing"
@@ -93,7 +94,7 @@ func TestCreateRepositoryConflict(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected error for 409")
 	}
-	fe, ok := err.(*domain.ForgejoError)
+	fe, ok := errors.AsType[*domain.ForgejoError](err)
 	if !ok || fe.Kind != domain.KindConflict {
 		t.Errorf("expected conflict, got %v", err)
 	}
@@ -110,7 +111,7 @@ func TestCreateRepositoryServerErrorRedactsToken(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected error for 5xx")
 	}
-	fe, ok := err.(*domain.ForgejoError)
+	fe, ok := errors.AsType[*domain.ForgejoError](err)
 	if !ok || fe.Kind != domain.KindTransient {
 		t.Errorf("expected transient, got %v", err)
 	}
@@ -208,7 +209,7 @@ func TestCreateOrganizationConflict(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected error for 409")
 	}
-	fe, ok := err.(*domain.ForgejoError)
+	fe, ok := errors.AsType[*domain.ForgejoError](err)
 	if !ok || fe.Kind != domain.KindConflict {
 		t.Errorf("expected conflict, got %v", err)
 	}
@@ -379,7 +380,7 @@ func TestCreateBranchConflict(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected error for 409")
 	}
-	fe, ok := err.(*domain.ForgejoError)
+	fe, ok := errors.AsType[*domain.ForgejoError](err)
 	if !ok || fe.Kind != domain.KindConflict {
 		t.Errorf("expected conflict, got %v", err)
 	}
@@ -599,7 +600,7 @@ func TestIsPullRequestMergedOtherError(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected error for 5xx")
 	}
-	fe, ok := err.(*domain.ForgejoError)
+	fe, ok := errors.AsType[*domain.ForgejoError](err)
 	if !ok || fe.Kind != domain.KindTransient {
 		t.Errorf("expected transient, got %v", err)
 	}
@@ -796,7 +797,7 @@ func TestWriteMethodsServerError(t *testing.T) {
 			if err == nil {
 				t.Fatal("expected error for 5xx")
 			}
-			fe, ok := err.(*domain.ForgejoError)
+			fe, ok := errors.AsType[*domain.ForgejoError](err)
 			if !ok {
 				t.Fatalf("expected *domain.ForgejoError, got %T", err)
 			}

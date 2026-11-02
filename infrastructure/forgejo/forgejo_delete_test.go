@@ -8,6 +8,7 @@ package forgejo
 
 import (
 	"context"
+	"errors"
 	"net/http"
 	"strings"
 	"testing"
@@ -62,7 +63,7 @@ func TestDeleteFileNotFound(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected error for 404")
 	}
-	fe, ok := err.(*domain.ForgejoError)
+	fe, ok := errors.AsType[*domain.ForgejoError](err)
 	if !ok || fe.Kind != domain.KindNotFound {
 		t.Errorf("expected not_found, got %v", err)
 	}
@@ -79,7 +80,7 @@ func TestDeleteFileTransientRedactsToken(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected error for 5xx")
 	}
-	fe, ok := err.(*domain.ForgejoError)
+	fe, ok := errors.AsType[*domain.ForgejoError](err)
 	if !ok || fe.Kind != domain.KindTransient {
 		t.Errorf("expected transient, got %v", err)
 	}
@@ -122,7 +123,7 @@ func TestDeleteBranchNotFound(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected error for 404")
 	}
-	fe, ok := err.(*domain.ForgejoError)
+	fe, ok := errors.AsType[*domain.ForgejoError](err)
 	if !ok || fe.Kind != domain.KindNotFound {
 		t.Errorf("expected not_found, got %v", err)
 	}
@@ -140,7 +141,7 @@ func TestDeleteBranchDefaultBranchRejected(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected error for 403")
 	}
-	fe, ok := err.(*domain.ForgejoError)
+	fe, ok := errors.AsType[*domain.ForgejoError](err)
 	if !ok || fe.Kind != domain.KindForbidden {
 		t.Errorf("expected forbidden, got %v", err)
 	}
@@ -180,7 +181,7 @@ func TestDeleteIssueNotFound(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected error for 404")
 	}
-	fe, ok := err.(*domain.ForgejoError)
+	fe, ok := errors.AsType[*domain.ForgejoError](err)
 	if !ok || fe.Kind != domain.KindNotFound {
 		t.Errorf("expected not_found, got %v", err)
 	}
@@ -220,7 +221,7 @@ func TestDeleteCommentNotFound(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected error for 404")
 	}
-	fe, ok := err.(*domain.ForgejoError)
+	fe, ok := errors.AsType[*domain.ForgejoError](err)
 	if !ok || fe.Kind != domain.KindNotFound {
 		t.Errorf("expected not_found, got %v", err)
 	}
@@ -260,7 +261,7 @@ func TestDeleteReleaseNotFound(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected error for 404")
 	}
-	fe, ok := err.(*domain.ForgejoError)
+	fe, ok := errors.AsType[*domain.ForgejoError](err)
 	if !ok || fe.Kind != domain.KindNotFound {
 		t.Errorf("expected not_found, got %v", err)
 	}
@@ -300,7 +301,7 @@ func TestDeleteRepositoryNotFound(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected error for 404")
 	}
-	fe, ok := err.(*domain.ForgejoError)
+	fe, ok := errors.AsType[*domain.ForgejoError](err)
 	if !ok || fe.Kind != domain.KindNotFound {
 		t.Errorf("expected not_found, got %v", err)
 	}
@@ -317,7 +318,7 @@ func TestDeleteRepositoryTransientRedactsToken(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected error for 5xx")
 	}
-	fe, ok := err.(*domain.ForgejoError)
+	fe, ok := errors.AsType[*domain.ForgejoError](err)
 	if !ok || fe.Kind != domain.KindTransient {
 		t.Errorf("expected transient, got %v", err)
 	}
@@ -360,7 +361,7 @@ func TestDeleteOrganizationNotFound(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected error for 404")
 	}
-	fe, ok := err.(*domain.ForgejoError)
+	fe, ok := errors.AsType[*domain.ForgejoError](err)
 	if !ok || fe.Kind != domain.KindNotFound {
 		t.Errorf("expected not_found, got %v", err)
 	}
@@ -377,7 +378,7 @@ func TestDeleteOrganizationTransientRedactsToken(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected error for 5xx")
 	}
-	fe, ok := err.(*domain.ForgejoError)
+	fe, ok := errors.AsType[*domain.ForgejoError](err)
 	if !ok || fe.Kind != domain.KindTransient {
 		t.Errorf("expected transient, got %v", err)
 	}

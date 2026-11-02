@@ -23,6 +23,13 @@ import (
 	"github.com/teran/mcp-forgejo/server"
 )
 
+// HTTP server timeouts (M11): a bounded read-header window and a graceful
+// shutdown grace period.
+const (
+	httpReadHeaderTimeout = 10 * time.Second
+	httpShutdownTimeout   = 5 * time.Second
+)
+
 // Build metadata, stamped at link time via ldflags (B2). Under `go test` and
 // plain `go build` these defaults hold; goreleaser overrides them (see
 // .goreleaser.yaml and SPEC.md §8).
@@ -68,7 +75,7 @@ var (
 		httpSrv := &http.Server{
 			Addr:              cfg.ListenAddr,
 			Handler:           server.NewHTTPHandler(s),
-			ReadHeaderTimeout: 10 * time.Second,
+			ReadHeaderTimeout: httpReadHeaderTimeout,
 		}
 
 		// serveErr carries the result of ListenAndServe back to the main
@@ -89,7 +96,7 @@ var (
 		case err := <-serveErr:
 			return err
 		case <-ctx.Done():
-			shutdownCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 5*time.Second)
+			shutdownCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), httpShutdownTimeout)
 			defer cancel()
 			_ = httpSrv.Shutdown(shutdownCtx)
 			return nil

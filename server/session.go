@@ -15,11 +15,14 @@ import (
 	"github.com/teran/mcp-forgejo/domain"
 )
 
+// requestIDBytes is the number of random bytes backing each request ID (L9/G11).
+const requestIDBytes = 8
+
 // newRequestID returns a 16-char lowercase hex string derived from 8 random
 // bytes (L9/G11). If the OS RNG fails it falls back to the literal "unknown" so
 // correlation logging never blocks or panics on an entropy error.
 func newRequestID() string {
-	b := make([]byte, 8)
+	b := make([]byte, requestIDBytes)
 	if _, err := rand.Read(b); err != nil {
 		return "unknown"
 	}

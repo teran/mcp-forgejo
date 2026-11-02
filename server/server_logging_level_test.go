@@ -38,7 +38,7 @@ func findToolCallLine(t *testing.T, buf *bytes.Buffer) map[string]any {
 	if out == "" {
 		t.Fatalf("no log lines captured at all")
 	}
-	for _, line := range strings.Split(out, "\n") {
+	for line := range strings.SplitSeq(out, "\n") {
 		if line == "" {
 			continue
 		}
