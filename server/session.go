@@ -85,9 +85,10 @@ func redactArgs(raw json.RawMessage) any {
 	return m
 }
 
-// logToolCall emits a single Debug line describing a completed tool call with
-// its redacted args, correlation IDs and byte/duration metrics. It is a no-op
-// when the logger is nil.
+// logToolCall emits a single Info line describing a completed tool call with
+// its redacted args, correlation IDs and byte/duration metrics. It is emitted
+// at info level so it is visible whenever logging is enabled (L08). It is a
+// no-op when the logger is nil.
 func logToolCall(l *logrus.Logger, ctx context.Context, tool string, argsRaw json.RawMessage, start time.Time, outBytes int64, err error) {
 	if l == nil {
 		return
@@ -105,7 +106,7 @@ func logToolCall(l *logrus.Logger, ctx context.Context, tool string, argsRaw jso
 	if id, ok := domain.RequestIDFromContext(ctx); ok {
 		e = e.WithField("request_id", id)
 	}
-	e.Debug("tool call")
+	e.Info("tool call")
 }
 
 // outcome maps an error to the "ok"/"error" outcome label used in logs.
