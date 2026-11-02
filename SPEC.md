@@ -140,9 +140,11 @@ Layers communicate through **domain interfaces**; `application` and `infrastruct
 
 Because the server is stateless, scaling (e.g. multiple HTTP/SSE replicas behind a load balancer) is trivial: any replica can serve any request with no shared state.
 
+Because the server is stateless (X01), the MCP session/request lifecycle semantics (X04/X05) and any local durability/encryption-at-rest concerns are **not applicable**. The domain-specific security audit (S14) in §5 documents this and records the new domain requirements **D‑SEC‑1 … D‑SEC‑8** alongside S01–S13.
+
 ---
 
-## 5. Security (S01–S06)
+## 5. Security (S01–S13, S14)
 
 - **S01 / N01 — TLS never in-server.** TLS is **NEVER implemented inside the server** for the HTTP/SSE transport. The HTTP/SSE listener serves plain HTTP; TLS termination is always the **reverse proxy's** job (nginx / Caddy / ingress) in front of the container. No in-server TLS code, certificates, or key handling exists or is planned.
 - **S02 / N02 — data hygiene / redaction.** The `FORGEJO_TOKEN` (and any credentials/passwords) are **never** echoed in logs, tool outputs, error messages, or debug dumps. The PAT is read into config once and used only as the outbound `Authorization: token <PAT>` header. Tool output contracts contain no token field; any server string that could embed credentials is redacted by a shared helper before being returned or logged.
@@ -153,6 +155,92 @@ Because the server is stateless, scaling (e.g. multiple HTTP/SSE replicas behind
 - **S05 / N02GO — fix, don't suppress.** gosec and govulncheck findings are **fixed**, never suppressed via blanket exclusions or default `#nosec`. Findings block the build (C05GO/C06GO). Where a finding **cannot** be fixed — e.g. a **test-only** dependency that is not linked into the production binary and has no upstream fix — it is excluded by **scoping the scan to production packages** (`govulncheck ./cmd/... ./domain/... ./application/... ./infrastructure/... ./server/... ./config/... ./logging/... ./observability/...`) rather than suppressing the finding, and the exclusion is documented here with its justification. Current justified exclusion: the e2e suite depends on `github.com/docker/docker` (pulled transitively via `go-docker-testsuite`) to run a real Forgejo container; it is **not** part of the release binary (`go list -deps ./cmd/mcp-forgejo` contains no `docker/*`), and the two findings (GO-2026-4887, GO-2026-4883) have **Fixed in: N/A**.
 - **S06 / N16 (not violated) — module path matches the public location.** The module/package name `github.com/teran/mcp-forgejo` matches the canonical public repository location and must be kept in sync with it. It is not a placeholder. Because this is a **public GitHub.com** repository, the standard public module path is correct (S06 permits standard public paths for public GitHub servers); the internal-Forgejo restriction behind N16 does not apply.
 - **S07 — reverse-proxy authn/authz for HTTP/SSE.** The MCP HTTP/SSE layer offers **no authentication of its own**: the server holds the PAT in its environment and uses it to call Forgejo, but any client that can reach `LISTEN_ADDR` can drive every tool with the operator's privileges — including destructive ones (`forgejo_repo_delete`, `forgejo_pull_merge`, …). For any HTTP/SSE deployment the listener **MUST** sit behind a reverse proxy that enforces client authentication/authorization (e.g. mTLS, OIDC, network ACL, or a proxy token) before requests reach the server. Additionally, run the PAT under a **dedicated low-privilege Forgejo user** scoped to only the operations the team actually needs. In **stdio** mode the client is trusted by construction (the local process that spawned the server), so this does not apply.
+
+### Domain security audit (S14)
+
+**Produced by:** the `security` agent, following `reference/security-audit.md`. **Purpose:** make the common S01–S13 baseline concrete for `mcp-forgejo` and derive requirements particular to a Forgejo control-plane / Git-proxy MCP server. This section is layered **on top of** S01–S13 and never weakens, redefines, or renumbers them. All requirements below are MUST-level.
+
+## 1. Domain threat model
+
+### 1.1 Trust zones and boundaries
+
+`mcp-forgejo` is a **stateless** (X01), **Hybrid** (M06) MCP server that proxies tool calls to a **single, fixed** remote Forgejo REST API over `resty.dev/v3`. It never touches the local filesystem (no `ALLOW_DIRS`, S04 vacuous). The trust zones and the boundaries between them:
+
+| Trust zone | Trust level | What lives here |
+|---|---|---|
+| **Z1 — MCP client / model host** | Trusted over stdio; **untrusted** over HTTP | The editor/CLI/agent that invokes tools and consumes results |
+| **Z2 — Server process (`mcp-forgejo`)** | Trusted | The Go binary, its config (`FORGEJO_URL`, `FORGEJO_TOKEN`), the tool registry, loggers |
+| **Z3 — Credential store** | Trusted (operator-owned) | `FORGEJO_TOKEN` in the environment (stdio); per-request PAT from the HTTP `Authorization: Bearer` header |
+| **Z4 — Reverse proxy (HTTP mode only)** | Trusted | TLS termination (S01), client **authentication/authorization** (S07); sits in front of the HTTP/SSE listener |
+| **Z5 — Forgejo upstream** | **Untrusted** for its responses | The remote Forgejo instance; the sole outbound destination (fixed `BaseURL`) |
+
+**What crosses each boundary (direction):**
+
+- **Z1 → Z2 (stdio):** trusted local process; tool-call JSON over stdin, results over stdout (no listener, no network).
+- **Z1 → Z2 → Z3 (HTTP):** untrusted HTTP requests carry an `Authorization: Bearer <PAT>` header, which the server injects into the request context (`server/http.go:29-39`, `domain/session.go:44-59`) and uses as the outbound Forgejo credential (`infrastructure/forgejo/forgejo.go:157-162`). **The server validates only that the Bearer token is non-empty — it does not verify it against anything** (`server/http.go:44-54`); real authentication/authorization is delegated to Forgejo (bad token ⇒ Forgejo 401 ⇒ mapped to `ACCESS_DENIED`).
+- **Z2 → Z5:** outbound HTTP to the **fixed** `FORGEJO_URL` BaseURL with the PAT as `Authorization: token <PAT>` plus an identifying `User-Agent` (`forgejo.go:36-39,133-150`). This is the **only** outbound connection the server makes — there is **no** user-supplied outbound URL.
+- **Z5 → Z2:** Forgejo responses (repo/issue/PR/release metadata, file contents, diffs, commit messages, labels). Treated as **untrusted data** even though the domain is closed (`openWorldHint: false`): a compromised or malicious Forgejo, or simply arbitrary repository content, can cross this boundary and be rendered verbatim by the client.
+- **Z2 → Z4/Z1:** tool results (including free-form diff/file text) and access logs (source IP, redacted args).
+
+### 1.2 Realistic attackers and their actions across boundaries
+
+| Attacker | Capability | Realistic actions across boundaries |
+|---|---|---|
+| **Compromised / malicious model host (stdio)** | Full control of tool arguments; reads results | Since stdio is trusted by construction, the main exposure is a compromised host exfiltrating secrets/private content read through the token's scope. Mitigation is **least privilege on the PAT user** (S10), not server-side authn. |
+| **Malicious or compromised Forgejo upstream (Z5)** | Controls all response bodies | Injects terminal-control sequences into file/diff/metadata text that the client renders verbatim (**S09/stripControl**); returns oversized responses (resource exhaustion); returns misleading metadata to drive the model toward destructive actions. |
+| **Network attacker in HTTP mode** | Can reach the HTTP/SSE listener (if not behind a proxy), or the reverse proxy | Drives every tool with whatever token it can obtain; **because the server accepts any non-empty Bearer token and the per-request token overrides the operator's configured fallback, a caller that can reach the listener can act as any Forgejo user whose PAT it holds** (including destructive tools). Requires **reverse-proxy authn/authz (S07)**; without it, the Bearer check is not an access control. |
+| **Untrusted remote client (HTTP)** | Supplies its own PAT; supplies tool arguments | Per-request token override (`Authorization: Bearer`) lets it act as itself; combined with weak reverse-proxy placement, it can escalate to the operator's configured fallback token. Also submits `clone_addr` to trigger a Forgejo-side fetch. |
+| **Operator / credential store** | Owns `FORGEJO_TOKEN` | Misconfiguration: running under an over-privileged PAT user, or storing the PAT where it leaks into logs/config. |
+
+## 2. Data sensitivity classification
+
+`mcp-forgejo` is **stateless** (X01) — it persists nothing, so **encryption-at-rest (X04) and local durability are not applicable**. No data is stored locally except the log file (stdio only, chmod 600, `L01`).
+
+| Data class | Sensitivity | Confidentiality | Integrity | Availability |
+|---|---|---|---|---|
+| `FORGEJO_TOKEN` / per-request PAT / migrate source `auth_token` | **Secret** | Redact in all output and logs (S02/L05): `domain.Redact` string scrub, `redactArgs` key scrub (`auth_token`, `pat`, `token`, `password`, `secret`, …), `redactSourceToken` for the migrate source PAT (`forgejo.go:850-860`); never logged, never returned in a tool result | — | — |
+| File contents, diffs, commit messages (may be arbitrary / contain embedded secrets) | **Untrusted** | Treat as untrusted on read-back (S07); do not assume they are safe to render | Not modified by the server | — |
+| Repo/issue/PR/release/tag/branch/label/milestone metadata | **Internal / Low** | Access scoped by the PAT user's Forgejo permissions (S10) | Read-only passthrough; must match Forgejo | Read tools must remain reliable |
+| Destructive-operation targets (repo, org, branch, release, tag, milestone, issue, comment, file) | **High (control-plane)** | — | **Authorized-op-only writes** (S12 HITL, S10 least privilege) | Destruction must not be automatic; must be confirmable/deniable (S12) |
+| Source-provider credentials embedded in `clone_addr` (e.g. `https://user:pass@host`) | **Secret (transit)** | Scrub from surfaced errors/logs (S02) | — | — |
+
+**Derived C-I-A requirements:**
+
+- **Confidentiality:** the PAT and any credential must never cross into tool output, logs, or error messages (S02/L05). All write paths must redact before surfacing.
+- **Integrity:** only mutating/destructive tools may change Forgejo state, and only after HITL for destructive ones (S12); the server must not silently retry a failed write (X03) and must not double-execute.
+- **Availability:** read/list tools must not be degraded by destructive tool usage; destructive tools require explicit human confirmation (S12); the PAT user should be least-privileged (S10) so a single call cannot wipe the namespace.
+
+## 3. Domain-specific attack vectors (beyond S01–S13)
+
+| # | Threat | Impact | Requirement (hardened S-code or **new domain requirement**) |
+|---|---|---|---|
+| V1 | **Terminal-control injection via file/diff content.** A malicious file or diff returned by Forgejo embeds ANSI escape sequences / C0 controls that the client renders verbatim. | Terminal hijacking / prompt-injection-adjacent output corruption on the model host. | **S09 hardened.** `stripControl` MUST strip ANSI + C0 controls from all free-form text. **Currently only `Diff.Text` and `File.Content` are sanitized** (`forgejo.go:262,273,1162,1164`); **new domain requirement D‑SEC‑1:** apply `stripControl` to **every** free-text output field the server returns (issue/PR bodies, comments, descriptions, commit messages, labels, milestone titles) so control injection cannot reach the client through any tool. |
+| V2 | **Malicious object names / refs / branches / paths in tool arguments** (`owner`, `repo`, `path`, `ref`, `branch`, tag names). | Path/segment injection into the Forgejo URL; traversal or hitting unintended resources. | **S08 hardened.** `url.PathEscape` neutralizes `/` in path segments (`forgejo.go:1228-1231`), blocking `../` traversal. **New domain requirement D‑SEC‑2:** validate `owner`/`repo`/`branch`/`tag` against a strict allowed charset (alphanumeric + `-`/`_`/`.`) and **reject literal `.`/`..` segments** in the application layer (`application/…`) before dispatch, so a malformed name cannot form an ambiguous upstream path. |
+| V3 | **SSRF via `forgejo_repo_migrate.clone_addr`.** The server forwards `clone_addr` verbatim to Forgejo's `/api/v1/repos/migrate` (`forgejo.go:838-845`), and **Forgejo itself fetches that URL server-side**. | Server-side request forgery from the **Forgejo host** (not from `mcp-forgejo`) against internal metadata/network endpoints. | **S11 hardened / new domain requirement D‑SEC‑3.** `mcp-forgejo` makes **no** outbound call to `clone_addr` itself (its only outbound target is the fixed `FORGEJO_URL` — so the server is not directly SSRF-able), but it must **document that `clone_addr` triggers a Forgejo-side fetch**, and require that the **Forgejo instance enforces a URL scheme/allowlist** (SSH/https only, no private-range/`file:` targets) and/or restricts `repoMigrate` to admins. Mirror this in the SPEC so operators harden Forgejo, not the proxy. |
+| V4 | **Destructive operations without explicit confirmation** (`forgejo_repo_delete`, `forgejo_org_delete`, `forgejo_issue_delete`, `forgejo_release_delete`, `forgejo_branch_delete`, `forgejo_file_delete`, `forgejo_tag_delete`, `forgejo_milestone_delete`, `forgejo_label_delete`, `forgejo_comment_delete`). | Permanent, irreversible loss of repositories/organizations/issues/releases. | **S12/S10 hardened.** All 10 delete tools carry `destructiveHint: true` (SPEC §6.3) and MUST be confirmable/deniable by a human with **no automatic cascading** of destructive calls. **New domain requirement D‑SEC‑4:** run under a **dedicated low-privilege Forgejo PAT user** scoped to exactly the operations the team needs (never `owner`/admin), so a destructive call cannot exceed the service account's authority. |
+| V5 | **PAT / source-PAT leakage in output or logs.** The Forgejo PAT, a per-request PAT, or the migrate source `auth_token` surfaces in a tool result, error message, or log line. | Full control-plane credential theft. | **S02/L05 hardened.** Centralized redaction MUST be applied: `domain.Redact(s, PAT)` on every surfaced error (`forgejo.go:615,715,724,1257,1261,1269`), `redactSourceToken` for the migrate source PAT (`forgejo.go:850-860`), and `redactArgs` key-based scrubbing in the access log (`server/session.go:59-86`, incl. `auth_token`/`pat`). **New domain requirement D‑SEC‑5:** because `domain.Redact` is an exact, case-sensitive string replace, redact **both** the full PAT and any shorter unique prefix, and also scrub credentials embedded in `clone_addr` (e.g. `user:pass@`) before logging. |
+| V6 | **HTTP client authentication is only a presence check.** `bearerAuth` accepts **any non-empty** Bearer token (`server/http.go:29-54`); real auth is delegated to Forgejo. A remote client holding its own PAT can also **override** the operator's configured fallback per-request. | Unauthorized callers reaching the listener can drive every tool — including destructive ones — as the operator or as themselves. | **S07 hardened / new domain requirement D‑SEC‑6.** The HTTP/SSE listener MUST sit behind a reverse proxy enforcing client **authentication and authorization** (mTLS/OIDC/ACL) before requests reach `:8080` (SPEC §5 S07). Document that the in-server Bearer check is **not** an access control and MUST NOT be relied upon as one. **D‑SEC‑6a:** consider restricting/disabling per-request token override when the deployment expects a single operator PAT, to prevent token-confusion. |
+| V7 | **Non-identifying User-Agent / mutable upstream target.** Outbound client fails to identify itself, or the upstream BaseURL is not fixed. | Operator cannot attribute Forgejo traffic; misrouting to an unintended host. | **M10 hardened.** The client MUST send `User-Agent: mcp-forgejo/dev (https://github.com/teran/mcp-forgejo)` (fallback) or the ldflags version (`forgejo.go:36-39,145`), and MUST target only the fixed `FORGEJO_URL` via `SetBaseURL` (`forgejo.go:136`). No user-supplied outbound URL is ever constructed. |
+| V8 | **Untrusted metadata rendered to the model.** Forgejo responses (even in a closed domain) are untrusted; metadata fields could steer the model or embed hostile content. | Output-contract hygiene failure; misleading model actions. | **S07/S09 hardened.** All tools return **structured** output (`openWorldHint:false` + `outputSchema`) and free text is control-sanitized (D‑SEC‑1). Forgejo responses remain untrusted data at the Z5→Z2 boundary; the model/operator should treat returned repo content as untrusted. |
+| V9 | **Oversized / unbounded pagination.** A caller passes huge `page`/`limit` values (`setPagination`, `forgejo.go:1218-1226`), causing large upstream responses. | Upstream resource exhaustion / slow tool calls. | **S08 hardened / new domain requirement D‑SEC‑7:** cap `limit` at a documented maximum and bound `page` in the `inputSchema` + application validation so a single tool call cannot request an unbounded page size. |
+| V10 | **Log-source spoofing over HTTP.** The access log derives `source` from `X-Real-IP`/`X-Forwarded-For` supplied by the client (`server/session.go:32-57`). | Attacker forges the recorded client IP, corrupting audit/forensics. | **New domain requirement D‑SEC‑8:** require the reverse proxy (S07) to **overwrite/sanitize** `X-Real-IP`/`X-Forwarded-For` so client-supplied values cannot forge the `source` recorded in access logs. |
+
+## 4. Auditor checklist (YES/NO) — all answered for this domain
+
+- [x] **YES** — Trust zones and boundaries enumerated and documented (§1.1: Z1–Z5, per-boundary data crossing).
+- [x] **YES** — A concrete threat model for this domain recorded, not a generic list (§1.2: four realistic attackers × boundary-crossing actions).
+- [x] **YES** — Every data class the server touches classified with C-I-A requirements (§2).
+- [x] **YES** — Domain-specific attack vectors identified beyond the generic S01–S13 (§3: V1–V10).
+- [x] **YES** — Each vector mapped to a concrete requirement (hardened S-code or new domain requirement) (§3).
+- [x] **YES** — Sensitive-data redaction (S02) and no-secrets-in-logs (L05) confirmed for this domain's data (V5, §2; `domain.Redact`/`redactArgs`/`redactSourceToken`, `server/session.go`, `forgejo.go`).
+- [x] **YES** — Destructive/irreversible operations flagged `destructiveHint` with HITL (S12) where the domain demands it (V4; all 10 delete tools, SPEC §6.3).
+- [x] **YES** — Mutating tools carry a real data-level idempotency mechanism (X02) where double-execution is harmful — stateless proxy; idempotent edits use natural-key/upsert semantics, destructive deletes are non-idempotent by design and HITL-gated.
+- [x] **YES** — Filesystem access scoped per S04 and extended for this domain's file classes — **N/A**: the server never touches the local filesystem (S04 vacuous; file content lives on Forgejo and is read/written over the API).
+- [x] **YES** — The audit is produced by the `security` agent and embedded verbatim (S14).
+
+---
+
+**Cross-reference (Data & state):** this audit is stateless (X01) — no persistence, so X04/X05 and encryption-at-rest do not apply; the sole state is immutable config (`FORGEJO_URL`, `FORGEJO_TOKEN`). The new domain requirements **D‑SEC‑1 … D‑SEC‑8** are recorded in SPEC §5 alongside S01–S13.
 
 ---
 
