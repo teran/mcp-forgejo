@@ -851,8 +851,7 @@ func redactSourceToken(err error, secret string) error {
 	if err == nil || secret == "" {
 		return err
 	}
-	var fe *domain.ForgejoError
-	if errors.As(err, &fe) {
+	if fe, ok := errors.AsType[*domain.ForgejoError](err); ok {
 		fe.Message = domain.Redact(fe.Message, secret)
 		return fe
 	}
@@ -980,6 +979,7 @@ type branchWire struct {
 // additionally captures head.sha, which the combined-status call needs.
 type pullRequestWire struct {
 	domain.PullRequest
+
 	Head struct {
 		SHA string `json:"sha"`
 	} `json:"head"`
@@ -1169,6 +1169,12 @@ func decodeFile(raw contentResponse) domain.File {
 // whitespace \n, \t and \r so diffs and file contents stay readable. This
 // guards clients that render returned text verbatim against terminal-control
 // injection.
+// esc is the ESC control byte (0x1b) that starts an ANSI escape sequence.
+const esc byte = 0x1b
+
+// stripControl removes terminal control characters from a string. It guards
+// clients that render returned text verbatim against terminal-control
+// injection.
 func stripControl(s string) string {
 	if s == "" {
 		return ""
@@ -1177,8 +1183,9 @@ func stripControl(s string) string {
 	b.Grow(len(s))
 	for i := 0; i < len(s); i++ {
 		c := s[i]
-		if c == 0x1b { // ESC: skip the whole ANSI escape sequence.
+		if c == esc { // ESC: skip the whole ANSI escape sequence.
 			i = skipANSI(s, i)
+
 			continue
 		}
 		if c < 0x20 || c == 0x7f {
@@ -1188,6 +1195,7 @@ func stripControl(s string) string {
 			default:
 				// Drop other C0 control characters.
 			}
+
 			continue
 		}
 		b.WriteByte(c)
@@ -1389,7 +1397,7 @@ func kindForStatus(status int) domain.ErrorKind {
 	case http.StatusLocked:
 		return domain.KindArchived
 	default:
-		if status >= 500 {
+		if status >= http.StatusInternalServerError {
 			return domain.KindTransient
 		}
 		return domain.KindUnknown

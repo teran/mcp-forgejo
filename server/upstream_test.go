@@ -2,6 +2,7 @@ package server
 
 import (
 	"context"
+	"net/http"
 	"net/http/httptest"
 	"sync"
 	"testing"
@@ -74,7 +75,7 @@ func TestBuildWithObserverAttachesObserver(t *testing.T) {
 		t.Fatal("observer received no observations after a tool call")
 	}
 	o := got[0]
-	if o.Method != "GET" {
+	if o.Method != http.MethodGet {
 		t.Errorf("Method = %q, want GET", o.Method)
 	}
 	if o.Status != 200 {

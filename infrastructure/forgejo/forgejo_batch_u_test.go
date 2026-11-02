@@ -28,6 +28,7 @@ package forgejo
 import (
 	"bytes"
 	"context"
+	"errors"
 	"io"
 	"net/http"
 	"strings"
@@ -96,7 +97,7 @@ func TestGetUserNotFound(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected error for 404")
 	}
-	fe, ok := err.(*domain.ForgejoError)
+	fe, ok := errors.AsType[*domain.ForgejoError](err)
 	if !ok || fe.Kind != domain.KindNotFound {
 		t.Errorf("expected not_found, got %v", err)
 	}
@@ -257,7 +258,7 @@ func TestGetBranchNotFound(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected error for 404")
 	}
-	fe, ok := err.(*domain.ForgejoError)
+	fe, ok := errors.AsType[*domain.ForgejoError](err)
 	if !ok || fe.Kind != domain.KindNotFound {
 		t.Errorf("expected not_found, got %v", err)
 	}
@@ -294,7 +295,7 @@ func TestBatchUMethodsServerError(t *testing.T) {
 			if err == nil {
 				t.Fatal("expected error for 5xx")
 			}
-			fe, ok := err.(*domain.ForgejoError)
+			fe, ok := errors.AsType[*domain.ForgejoError](err)
 			if !ok {
 				t.Fatalf("expected *domain.ForgejoError, got %T", err)
 			}
@@ -330,7 +331,7 @@ func TestBatchUResponseBodyReadError(t *testing.T) {
 			if err == nil {
 				t.Fatal("expected error for failing response body read")
 			}
-			fe, ok := err.(*domain.ForgejoError)
+			fe, ok := errors.AsType[*domain.ForgejoError](err)
 			if !ok || fe.Kind != domain.KindTransient {
 				t.Errorf("expected transient, got %v", err)
 			}

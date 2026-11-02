@@ -837,9 +837,10 @@ func registerBatchTTools(s *mcp.Server, client *forgejo.Client) {
 	})
 
 	addTool(s, &mcp.Tool{
-		Name:        "forgejo_repo_migrate",
-		Title:       "Migrate repository",
-		Description: "Migrate a remote git repository (e.g. from GitHub) into Forgejo using its clone URL. Not idempotent: migrating a name that already exists conflicts. The source provider access token (auth_token) is accepted and redacted.",
+		Name:  "forgejo_repo_migrate",
+		Title: "Migrate repository",
+		Description: "Migrate a remote git repository (e.g. from GitHub) into Forgejo using its clone URL. " +
+			"Not idempotent: migrating a name that already exists conflicts. The source provider access token (auth_token) is accepted and redacted.",
 		Annotations: writeAnnotations("Migrate repository", false),
 	}, func(ctx context.Context, _ *mcp.CallToolRequest, in repoMigrateIn) (*mcp.CallToolResult, domain.Repository, error) {
 		repo, err := application.MigrateRepository(ctx, client, domain.MigrateRepositoryInput{

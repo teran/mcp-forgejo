@@ -167,7 +167,11 @@ func TestRedactArgs(t *testing.T) {
 // case-insensitive.
 func TestRedactArgsCaseInsensitive(t *testing.T) {
 	raw := json.RawMessage(`{"Owner":"acme","Token":"S","PASSWORD":"x","ApiKey":"y"}`)
-	got := redactArgs(raw).(map[string]any)
+	args := redactArgs(raw)
+	got, ok := args.(map[string]any)
+	if !ok {
+		t.Fatalf("expected map[string]any, got %T", args)
+	}
 	if got["Token"] != "[REDACTED]" || got["PASSWORD"] != "[REDACTED]" || got["ApiKey"] != "[REDACTED]" {
 		t.Errorf("case-insensitive redaction failed: %v", got)
 	}
@@ -196,7 +200,10 @@ func TestRedactArgsNonObject(t *testing.T) {
 // never contains the raw token.
 func TestRedactArgsSecretDoesNotEchoToken(t *testing.T) {
 	raw := json.RawMessage(`{"token":"` + testToken + `"}`)
-	out, _ := json.Marshal(redactArgs(raw))
+	out, err := json.Marshal(redactArgs(raw))
+	if err != nil {
+		t.Fatalf("marshal redacted args: %v", err)
+	}
 	if strings.Contains(string(out), testToken) {
 		t.Errorf("token leaked in redacted args: %s", out)
 	}

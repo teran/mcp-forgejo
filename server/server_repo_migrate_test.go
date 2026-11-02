@@ -189,7 +189,11 @@ func TestRepoMigrateToolJSONSchemaPinsFields(t *testing.T) {
 // sensitiveArgsKeys so it is redacted before logging.
 func TestRedactArgsMigrateAuthToken(t *testing.T) {
 	raw := json.RawMessage(`{"clone_addr":"https://github.com/acme/upstream.git","repo_name":"migrated","auth_token":"ghp_log_secret","auth_username":"alice"}`)
-	got := redactArgs(raw).(map[string]any)
+	args := redactArgs(raw)
+	got, ok := args.(map[string]any)
+	if !ok {
+		t.Fatalf("expected map[string]any, got %T", args)
+	}
 	if got["auth_token"] != "[REDACTED]" {
 		t.Errorf("auth_token not redacted: %v", got["auth_token"])
 	}

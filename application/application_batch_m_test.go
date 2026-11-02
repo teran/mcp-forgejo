@@ -238,7 +238,7 @@ func TestUpdateMilestonePropagatesError(t *testing.T) {
 func TestUpdateMilestoneIdempotent(t *testing.T) {
 	svc := &stubMilestoneWriteService{milestone: domain.Milestone{ID: 1}}
 	in := domain.UpdateMilestoneInput{Title: "v1"}
-	for i := 0; i < 2; i++ {
+	for i := range 2 {
 		if _, err := UpdateMilestone(context.Background(), svc, "acme", "demo", 1, in); err != nil {
 			t.Fatalf("UpdateMilestone() iteration %d error = %v", i, err)
 		}
@@ -382,7 +382,7 @@ func TestUpdateLabelPropagatesError(t *testing.T) {
 func TestUpdateLabelIdempotent(t *testing.T) {
 	svc := &stubLabelWriteService{label: domain.Label{ID: 1}}
 	in := domain.UpdateLabelInput{Name: "bug"}
-	for i := 0; i < 2; i++ {
+	for i := range 2 {
 		if _, err := UpdateLabel(context.Background(), svc, "acme", "demo", 1, in); err != nil {
 			t.Fatalf("UpdateLabel() iteration %d error = %v", i, err)
 		}

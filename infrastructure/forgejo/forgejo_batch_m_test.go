@@ -43,6 +43,7 @@ package forgejo
 
 import (
 	"context"
+	"errors"
 	"net/http"
 	"strings"
 	"testing"
@@ -113,7 +114,7 @@ func TestListMilestonesNotFound(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected error for 404")
 	}
-	fe, ok := err.(*domain.ForgejoError)
+	fe, ok := errors.AsType[*domain.ForgejoError](err)
 	if !ok || fe.Kind != domain.KindNotFound {
 		t.Errorf("expected not-found, got %v", err)
 	}
@@ -313,7 +314,7 @@ func TestListLabelsNotFound(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected error for 404")
 	}
-	fe, ok := err.(*domain.ForgejoError)
+	fe, ok := errors.AsType[*domain.ForgejoError](err)
 	if !ok || fe.Kind != domain.KindNotFound {
 		t.Errorf("expected not-found, got %v", err)
 	}
@@ -475,8 +476,15 @@ func TestSetIssueLabels(t *testing.T) {
 		t.Errorf("path = %q, want /api/v1/repos/acme/demo/issues/5/labels", gotPath)
 	}
 	labels, ok := gotBody["labels"].([]any)
-	if !ok || len(labels) != 3 || labels[0].(float64) != 1 || labels[1].(float64) != 2 || labels[2].(float64) != 3 {
+	if !ok || len(labels) != 3 {
 		t.Errorf("body = %+v, want labels:[1,2,3]", gotBody)
+		return
+	}
+	for i, want := range []float64{1, 2, 3} {
+		got, ok := labels[i].(float64)
+		if !ok || got != want {
+			t.Errorf("labels[%d] = %v, want %v", i, labels[i], want)
+		}
 	}
 }
 
@@ -542,7 +550,7 @@ func TestBatchMMethodsServerError(t *testing.T) {
 			if err == nil {
 				t.Fatal("expected error for 5xx")
 			}
-			fe, ok := err.(*domain.ForgejoError)
+			fe, ok := errors.AsType[*domain.ForgejoError](err)
 			if !ok {
 				t.Fatalf("expected *domain.ForgejoError, got %T", err)
 			}
@@ -573,7 +581,7 @@ func TestBatchMResponseBodyReadError(t *testing.T) {
 			if err == nil {
 				t.Fatal("expected error for failing response body read")
 			}
-			fe, ok := err.(*domain.ForgejoError)
+			fe, ok := errors.AsType[*domain.ForgejoError](err)
 			if !ok || fe.Kind != domain.KindTransient {
 				t.Errorf("expected transient, got %v", err)
 			}

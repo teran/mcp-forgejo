@@ -31,7 +31,7 @@ func allJSONLines(t *testing.T, buf *bytes.Buffer) []map[string]any {
 		return nil
 	}
 	var lines []map[string]any
-	for _, ln := range strings.Split(out, "\n") {
+	for ln := range strings.SplitSeq(out, "\n") {
 		var m map[string]any
 		if err := json.Unmarshal([]byte(ln), &m); err != nil {
 			t.Fatalf("decode log line: %v (line=%q)", err, ln)

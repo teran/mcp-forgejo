@@ -27,6 +27,7 @@ package forgejo
 
 import (
 	"context"
+	"errors"
 	"net/http"
 	"strings"
 	"testing"
@@ -37,8 +38,6 @@ import (
 // srcAuthToken is the (fake) source git provider PAT used to prove it is
 // redacted from any surfaced error (S02).
 const srcAuthToken = "ghp_src_secret_token"
-
-func boolPtr(b bool) *bool { return &b }
 
 // =============================================================================
 // forgejo_repo_migrate — happy path
@@ -55,6 +54,7 @@ func TestMigrateRepository(t *testing.T) {
 	c, _ := newTestServer(t, handler)
 
 	mirror, priv := true, true
+	issues, labels, lfs := true, false, true
 	repo, err := c.MigrateRepository(context.Background(), domain.MigrateRepositoryInput{
 		CloneAddr:      "https://github.com/acme/upstream.git",
 		RepoName:       "migrated",
@@ -66,9 +66,9 @@ func TestMigrateRepository(t *testing.T) {
 		MirrorInterval: "8h",
 		Private:        &priv,
 		Description:    "imported repo",
-		Issues:         boolPtr(true),
-		Labels:         boolPtr(false),
-		LFS:            boolPtr(true),
+		Issues:         &issues,
+		Labels:         &labels,
+		LFS:            &lfs,
 		LFSEndpoint:    "https://lfs.example.com",
 	})
 	if err != nil {
@@ -148,7 +148,7 @@ func TestMigrateRepositoryConflict(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected error for 409")
 	}
-	fe, ok := err.(*domain.ForgejoError)
+	fe, ok := errors.AsType[*domain.ForgejoError](err)
 	if !ok || fe.Kind != domain.KindConflict {
 		t.Errorf("expected conflict, got %v", err)
 	}
@@ -164,7 +164,7 @@ func TestMigrateRepositoryForbidden(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected error for 403")
 	}
-	fe, ok := err.(*domain.ForgejoError)
+	fe, ok := errors.AsType[*domain.ForgejoError](err)
 	if !ok || fe.Kind != domain.KindForbidden {
 		t.Errorf("expected forbidden, got %v", err)
 	}
@@ -180,7 +180,7 @@ func TestMigrateRepositoryValidation(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected error for 422")
 	}
-	fe, ok := err.(*domain.ForgejoError)
+	fe, ok := errors.AsType[*domain.ForgejoError](err)
 	if !ok || fe.Kind != domain.KindValidation {
 		t.Errorf("expected validation, got %v", err)
 	}
@@ -198,7 +198,7 @@ func TestMigrateRepositoryServerErrorRedactsToken(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected error for 5xx")
 	}
-	fe, ok := err.(*domain.ForgejoError)
+	fe, ok := errors.AsType[*domain.ForgejoError](err)
 	if !ok || fe.Kind != domain.KindTransient {
 		t.Errorf("expected transient, got %v", err)
 	}
@@ -224,7 +224,7 @@ func TestMigrateRepositoryServerErrorRedactsAuthToken(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected error for 5xx")
 	}
-	fe, ok := err.(*domain.ForgejoError)
+	fe, ok := errors.AsType[*domain.ForgejoError](err)
 	if !ok || fe.Kind != domain.KindTransient {
 		t.Errorf("expected transient, got %v", err)
 	}

@@ -41,6 +41,7 @@ func GetIssue(ctx context.Context, svc domain.IssueService, owner, repo string, 
 	if err != nil {
 		return domain.IssueWithComments{}, err
 	}
+
 	return domain.IssueWithComments{Issue: issue, Comments: comments}, nil
 }
 
@@ -55,6 +56,7 @@ func GetDiff(ctx context.Context, svc domain.DiffService, owner, repo, basehead 
 	if basehead != "" {
 		return svc.GetDiff(ctx, owner, repo, basehead)
 	}
+
 	return svc.GetPullDiff(ctx, owner, repo, prIndex)
 }
 
@@ -93,6 +95,7 @@ func ListReleases(ctx context.Context, svc domain.ReleaseService, owner, repo st
 		}
 		return []domain.Release{rel}, nil
 	}
+
 	return svc.ListReleases(ctx, owner, repo, page, limit)
 }
 

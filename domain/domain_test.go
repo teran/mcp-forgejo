@@ -2,6 +2,7 @@ package domain
 
 import (
 	"encoding/json"
+	"errors"
 	"testing"
 )
 
@@ -39,7 +40,7 @@ func TestForgejoError(t *testing.T) {
 
 func TestNewForgejoError(t *testing.T) {
 	err := NewForgejoError(KindConflict, "conflict occurred")
-	fe, ok := err.(*ForgejoError)
+	fe, ok := errors.AsType[*ForgejoError](err)
 	if !ok {
 		t.Fatalf("expected *ForgejoError, got %T", err)
 	}
